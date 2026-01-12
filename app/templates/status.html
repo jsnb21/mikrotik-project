@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-md mx-auto bg-white rounded-lg shadow-lg overflow-hidden mt-10">
+    <div class="bg-green-500 p-4 text-center">
+        <h2 class="text-white text-2xl font-bold">You are Connected!</h2>
+        <p class="text-green-100">Browse responsibly.</p>
+    </div>
+    
+    <div class="p-6 text-center">
+        <div class="mb-4">
+            <span class="text-gray-500 text-sm">Time Remaining</span>
+            <div id="timer" class="text-5xl font-mono font-bold text-gray-800 my-2">--:--:--</div>
+        </div>
+        
+        <div class="relative pt-1">
+            <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-green-200">
+                <div id="progressBar" style="width:100%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-green-500 transition-all duration-1000"></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-md text-sm">
+            <div>
+                <p class="text-gray-500">Voucher Code</p>
+                <p class="font-bold font-mono">{{ voucher.code }}</p>
+            </div>
+            <div>
+                <p class="text-gray-500">Expiry Time</p>
+                <p class="font-bold" id="expiryDisplay">--:--</p>
+            </div>
+            <div>
+                <p class="text-gray-500">Speed</p>
+                <p class="font-bold">Up to 10 Mbps</p>
+            </div>
+            <div>
+                <p class="text-gray-500">MAC</p>
+                <p class="font-mono text-xs">{{ voucher.user_mac_address }}</p>
+            </div>
+        </div>
+        
+        <div class="mt-6 flex gap-2">
+            <a href="{{ url_for('main.index') }}" class="flex-1 block w-full border border-blue-600 text-blue-600 hover:bg-blue-50 font-bold py-2 px-4 rounded text-center">
+                Extend Time
+            </a>
+            <button onclick="alert('Disconnected functionality not implemented locally. Turn off wifi to disconnect.')" class="flex-1 block w-full bg-red-100 text-red-600 hover:bg-red-200 font-bold py-2 px-4 rounded">
+                Logout
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Initial server values
+    const remainingSecondsInitial = Number("{{ voucher.remaining_seconds }}");
+    const totalDuration = Number("{{ voucher.duration_minutes * 60 }}");
+    
+    let remaining = remainingSecondsInitial;
+    let timerInterval;
+
+    function formatTime(seconds) {
+        if (seconds <= 0) return "00:00:00";
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return [
+            h.toString().padStart(2, '0'),
+            m.toString().padStart(2, '0'),
+            s.toString().padStart(2, '0')
+        ].join(':');
+    }
+
+    function updateDisplay() {
+        const timerEl = document.getElementById('timer');
+        const barEl = document.getElementById('progressBar');
+        
+        timerEl.innerText = formatTime(remaining);
+        
+        // Update valid percenage
+        if (totalDuration > 0) {
+            const pct = (remaining / totalDuration) * 100;
+            barEl.style.width = pct + "%";
+            
+            if (pct < 10) {
+                barEl.classList.remove('bg-green-500');
+                barEl.classList.add('bg-red-500');
+            }
+        }
+    }
+
+    function startTimer() {
+        // Set expiry display local time
+        const expiryDate = new Date();
+        expiryDate.setSeconds(expiryDate.getSeconds() + remaining);
+        document.getElementById('expiryDisplay').innerText = expiryDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+        updateDisplay();
+        
+        timerInterval = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(timerInterval);
+                remaining = 0;
+                updateDisplay();
+                alert("Session Expired");
+                window.location.href = "{{ url_for('main.index') }}";
+            }
+            updateDisplay();
+        }, 1000);
+    }
+    
+    // Sync with server every minute check
+    async function syncStatus() {
+        try {
+            const res = await fetch(`/api/status/{{ voucher.code }}`);
+            const data = await res.json();
+            if (data.active) {
+                // Adjust if drift is large (> 5 seconds)
+                if (Math.abs(remaining - data.remaining_seconds) > 5) {
+                    remaining = data.remaining_seconds;
+                }
+            } else {
+                 remaining = 0; // force expiry
+            }
+        } catch(e) {
+            console.log("Sync error", e);
+        }
+    }
+
+    startTimer();
+    setInterval(syncStatus, 30000); // Sync every 30s
+</script>
+{% endblock %}
