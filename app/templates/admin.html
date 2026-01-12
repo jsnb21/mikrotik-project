@@ -2,20 +2,31 @@
 
 {% block content %}
 <div class="container mx-auto mt-6">
-    <h1 class="text-3xl font-bold mb-6 text-gray-800">Admin Dashboard</h1>
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+        <div class="flex gap-2 items-center">
+            <span class="text-gray-600 mr-2">Hello, <b>{{ current_user.username }}</b></span>
+            <a href="{{ url_for('main.admin_settings') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-bold">Settings</a>
+            <a href="{{ url_for('main.logout') }}" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm font-bold">Logout</a>
+        </div>
+    </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
         <div class="bg-white p-4 rounded shadow border-l-4 border-[#0b343d]">
             <div class="text-gray-500 text-sm">Total Vouchers</div>
             <div class="text-2xl font-bold">{{ total }}</div>
         </div>
-        <div class="bg-white p-4 rounded shadow border-l-4 border-green-500">
-            <div class="text-gray-500 text-sm">Active / Used</div>
+        <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+            <div class="text-gray-500 text-sm">Active</div>
+            <div class="text-2xl font-bold">{{ active }}</div>
+        </div>
+         <div class="bg-white p-4 rounded shadow border-l-4 border-red-500">
+            <div class="text-gray-500 text-sm">Expired (Used)</div>
             <div class="text-2xl font-bold">{{ used }}</div>
         </div>
         <div class="bg-white p-4 rounded shadow border-l-4 border-gray-500">
-            <div class="text-gray-500 text-sm">Inventory (Unused)</div>
+            <div class="text-gray-500 text-sm">Unused</div>
             <div class="text-2xl font-bold">{{ unused }}</div>
         </div>
         <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-500">
@@ -27,7 +38,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         <!-- Voucher Generator -->
-        <div class="bg-white p-6 rounded shadow">
+        <div class="bg-white p-6 rounded shadow relative">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold">Generate Vouchers</h2>
                 <form action="{{ url_for('main.reset_vouchers') }}" method="POST" onsubmit="return confirm('WARNING: This will delete ALL vouchers. Are you sure?');">
@@ -69,6 +80,7 @@
 
     <!-- Recent Vouchers Table -->
     <div class="bg-white p-6 rounded shadow mt-8">
+    <div class="bg-white p-6 rounded shadow mt-8">
         <h2 class="text-xl font-bold mb-4">Recent Vouchers</h2>
         <div class="overflow-x-auto">
             <table class="min-w-full leading-normal">
@@ -99,10 +111,16 @@
                         </td>
                         <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
                             <span class="relative inline-block px-3 py-1 font-semibold leading-tight">
-                                <span aria-hidden class="absolute inset-0 {{ 'bg-red-200' if voucher.is_activated else 'bg-green-200' }} opacity-50 rounded-full"></span>
-                                <span class="relative {{ 'text-red-900' if voucher.is_activated else 'text-green-900' }}">
-                                    {{ 'Used' if voucher.is_activated else 'Available' }}
-                                </span>
+                                {% if not voucher.is_activated %}
+                                    <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
+                                    <span class="relative text-green-900">Available</span>
+                                {% elif voucher.remaining_seconds > 0 %}
+                                    <span aria-hidden class="absolute inset-0 bg-blue-200 opacity-50 rounded-full"></span>
+                                    <span class="relative text-blue-900">Active</span>
+                                {% else %}
+                                    <span aria-hidden class="absolute inset-0 bg-red-200 opacity-50 rounded-full"></span>
+                                    <span class="relative text-red-900">Expired</span>
+                                {% endif %}
                             </span>
                         </td>
                         <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
@@ -127,10 +145,10 @@
     const usageChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Used', 'Unused'],
+            labels: ['Active', 'Expired', 'Unused'],
             datasets: [{
-                data: [Number("{{ used }}"), Number("{{ unused }}")],
-                backgroundColor: ['#10B981', '#E5E7EB'],
+                data: [Number("{{ active }}"), Number("{{ used }}"), Number("{{ unused }}")],
+                backgroundColor: ['#3B82F6', '#EF4444', '#E5E7EB'],
                 borderWidth: 0
             }]
         },
