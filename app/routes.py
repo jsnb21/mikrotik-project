@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
 from . import db
 from .models import Voucher
 from .utils import mikrotik_allow_mac
@@ -9,11 +9,22 @@ bp = Blueprint('main', __name__)
 
 @bp.route('/')
 def index():
+    # Check if user has an active session in cookies
+    if 'active_code' in session:
+        code = session['active_code']
+        voucher = Voucher.query.filter_by(code=code).first()
+        if voucher and voucher.remaining_seconds > 0:
+            return redirect(url_for('main.status_page', code=code))
+        else:
+            # Clean up expired session
+            session.pop('active_code', None)
+            
     return render_template('index.html')
 
 @bp.route('/activate', methods=['POST'])
 def activate():
     code = request.form.get('voucher_code', '').strip().upper()
+
     # In a real app, getting MAC address from a web request is tricky if not behind the captive portal.
     # The captive portal usually passes the MAC as a query param or header.
     # For this demo, we'll assume it's passed or simulate it.
@@ -30,6 +41,7 @@ def activate():
     if voucher.is_activated:
         # Check if it's the same user re-entering the code?
         if voucher.user_mac_address == mac_address and voucher.remaining_seconds > 0:
+             session['active_code'] = code # Ensure session is set
              return redirect(url_for('main.status_page', code=code))
         
         flash("Voucher already used or expired", "error")
@@ -43,6 +55,7 @@ def activate():
         # Integration with MikroTik
         mikrotik_allow_mac(mac_address, voucher.remaining_seconds)
         
+        session['active_code'] = code # Set cookie
         return redirect(url_for('main.status_page', code=code))
         
     except Exception as e:

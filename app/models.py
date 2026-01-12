@@ -49,10 +49,16 @@ class Voucher(db.Model):
         
         # Ensure we compare timezone-aware datetimes
         now = datetime.now(timezone.utc)
-        if now > self.expires_at:
+        
+        expires = self.expires_at
+        # Fix for SQLite which might return naive datetimes after commit/reload
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+            
+        if now > expires:
             return 0
             
-        remaining = (self.expires_at - now).total_seconds()
+        remaining = (expires - now).total_seconds()
         return max(0, int(remaining))
 
     @staticmethod
