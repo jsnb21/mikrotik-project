@@ -1,55 +1,85 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="max-w-md mx-auto bg-white rounded-lg shadow-lg overflow-hidden mt-10">
-    <div class="bg-green-500 p-4 text-center">
-        <h2 class="text-white text-2xl font-bold">You are Connected!</h2>
-        <p class="text-green-100">Browse responsibly.</p>
+<div class="flex flex-col items-center justify-center pt-8 pb-12 w-full">
+    
+    <div class="text-center mb-10">
+        <h1 id="statusTitle" class="text-5xl font-bold text-gray-900 mb-2">
+            You are now <span class="text-green-500">Connected</span>
+        </h1>
+        <p id="statusMessage" class="text-2xl font-bold text-gray-800">Enjoy Browsing! 💖</p>
     </div>
     
-    <div class="p-6 text-center">
-        <div class="mb-4">
-            <span class="text-gray-500 text-sm">Time Remaining</span>
-            <div id="timer" class="text-5xl font-mono font-bold text-gray-800 my-2">--:--:--</div>
-        </div>
+    <!-- Circular Timer Container -->
+    <div class="relative w-72 h-72">
+        <!-- SVG Ring -->
+        <svg class="w-full h-full transform -rotate-90">
+            <!-- Background Ring -->
+            <circle
+                id="bgRing"
+                cx="144"
+                cy="144"
+                r="120"
+                stroke="#10B981"
+                stroke-width="18"
+                fill="transparent"
+                class="opacity-20"
+            />
+            <!-- Progress Ring -->
+            <circle
+                id="progressRing"
+                cx="144"
+                cy="144"
+                r="120"
+                stroke="#10B981"
+                stroke-width="18"
+                fill="transparent"
+                stroke-linecap="round"
+                class="transition-all duration-1000 ease-linear"
+                style="stroke-dasharray: 754; stroke-dashoffset: 0;"
+            />
+        </svg>
         
-        <div class="relative pt-1">
-            <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-green-200">
-                <div id="progressBar" style="width:100%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-green-500 transition-all duration-1000"></div>
-            </div>
+        <!-- Center Content -->
+        <div class="absolute top-0 left-0 w-full h-full flex flex-col items-center justify-center text-gray-800">
+            <!-- Voucher Code -->
+            <div class="text-base font-bold uppercase tracking-widest text-gray-700 mb-1">{{ voucher.code }}</div>
+            
+            <!-- Big Timer -->
+            <div id="timer" class="text-4xl font-bold mb-1 tabular-nums">--:--:--</div>
+            
+            <!-- Expiry -->
+            <div class="text-xs font-bold text-gray-500 uppercase">Expires In</div>
+            <div id="expiryDisplay" class="text-lg font-bold text-gray-900">--:--</div>
         </div>
-
-        <div class="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-md text-sm">
-            <div>
-                <p class="text-gray-500">Voucher Code</p>
-                <p class="font-bold font-mono">{{ voucher.code }}</p>
-            </div>
-            <div>
-                <p class="text-gray-500">Expiry Time</p>
-                <p class="font-bold" id="expiryDisplay">--:--</p>
-            </div>
-            <div>
-                <p class="text-gray-500">Speed</p>
-                <p class="font-bold">Up to 10 Mbps</p>
-            </div>
-            <div>
-                <p class="text-gray-500">MAC</p>
-                <p class="font-mono text-xs">{{ voucher.user_mac_address }}</p>
-            </div>
-        </div>
+    </div>
+    
+    <div class="mt-12 text-center text-gray-400 text-sm">
+        <p>MAC: {{ voucher.user_mac_address }}</p>
         
-        <div class="mt-6">
-            <a href="{{ url_for('main.index') }}" class="block w-full border border-[#0b343d] text-[#0b343d] hover:bg-gray-50 font-bold py-2 px-4 rounded text-center">
-                Extend Time
+        <!-- Back to Home Button (Hidden by default, shown on expiry) -->
+        <div id="homeButtonContainer" class="hidden mt-6">
+            <a href="{{ url_for('main.index') }}" 
+               class="inline-block px-8 py-3 bg-gray-900 text-white text-sm font-bold rounded-full hover:bg-gray-800 transition shadow-lg uppercase tracking-wide">
+                Back to Home
             </a>
         </div>
     </div>
+
 </div>
 
 <script>
     // Initial server values
     const remainingSecondsInitial = Number("{{ voucher.remaining_seconds }}");
     const totalDuration = Number("{{ voucher.duration_minutes * 60 }}");
+    
+    // SVG Config
+    const circle = document.getElementById('progressRing');
+    const radius = 120;
+    const circumference = 2 * Math.PI * radius;
+    
+    // Set initial dasharray
+    circle.style.strokeDasharray = `${circumference}`;
     
     let remaining = remainingSecondsInitial;
     let timerInterval;
@@ -68,27 +98,76 @@
 
     function updateDisplay() {
         const timerEl = document.getElementById('timer');
-        const barEl = document.getElementById('progressBar');
         
         timerEl.innerText = formatTime(remaining);
         
-        // Update valid percenage
+        // Update Ring
         if (totalDuration > 0) {
-            const pct = (remaining / totalDuration) * 100;
-            barEl.style.width = pct + "%";
+            // Invert logic: Full circle = full time. As remaining decreases, offset increases.
+            // 100% remaining -> offset 0
+            // 0% remaining -> offset circumference
             
-            if (pct < 10) {
-                barEl.classList.remove('bg-green-500');
-                barEl.classList.add('bg-red-500');
+            const offset = circumference - (remaining / totalDuration) * circumference;
+            circle.style.strokeDashoffset = offset;
+            
+            // Color Shift on low time
+            if (remaining < 300) { // last 5 mins
+                circle.setAttribute('stroke', '#EF4444'); // Red
             }
         }
+    }
+
+    function handleExpiry() {
+        // 1. Setup UI Text
+        const title = document.getElementById('statusTitle');
+        if(title) title.innerHTML = 'You have been <span class="text-red-500">Disconnected</span>';
+        
+        const msg = document.getElementById('statusMessage');
+        if(msg) msg.innerText = 'Your voucher had expired! 💔';
+
+        // 2. Set Timer to Zero
+        const timerEl = document.getElementById('timer');
+        if(timerEl) timerEl.innerText = "00:00:00";
+
+        // 3. Gray Rings (Closed Loop Look)
+        const fgRing = document.getElementById('progressRing');
+        if(fgRing) {
+            fgRing.setAttribute('stroke', '#6B7280'); // Gray-500
+            fgRing.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500'); // Clean up
+            fgRing.style.strokeDashoffset = 0; // Full Circle
+        }
+        
+        const bgRing = document.getElementById('bgRing');
+        if(bgRing) {
+            bgRing.setAttribute('stroke', '#6B7280');
+            bgRing.classList.remove('opacity-20');
+            // bgRing.classList.add('opacity-50'); 
+        }
+
+        // 4. Show Back to Home Button
+        const homeBtn = document.getElementById('homeButtonContainer');
+        if(homeBtn) homeBtn.classList.remove('hidden');
     }
 
     function startTimer() {
         // Set expiry display local time
         const expiryDate = new Date();
         expiryDate.setSeconds(expiryDate.getSeconds() + remaining);
-        document.getElementById('expiryDisplay').innerText = expiryDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        // Format like 1:39PM
+        const timeString = expiryDate.toLocaleTimeString([], {
+            hour: 'numeric', 
+            minute:'2-digit',
+            hour12: true
+        }).replace(' ', ''); 
+        
+        document.getElementById('expiryDisplay').innerText = timeString;
+
+        // Initial Check
+        if (remaining <= 0) {
+            handleExpiry();
+            return;
+        }
 
         updateDisplay();
         
@@ -97,11 +176,10 @@
             if (remaining <= 0) {
                 clearInterval(timerInterval);
                 remaining = 0;
+                handleExpiry();
+            } else {
                 updateDisplay();
-                alert("Session Expired");
-                window.location.href = "{{ url_for('main.index') }}";
             }
-            updateDisplay();
         }, 1000);
     }
     
