@@ -94,6 +94,10 @@ def get_income_stats():
     Returns: dict with daily and monthly data
     """
     return {
+        "earned_today": 900,
+        "earned_month": 22000,
+        "earned_year": 91500,
+        "average_daily": 657,
         "daily": [500, 600, 450, 700, 800, 650, 900], # Last 7 days
         "monthly": [15000, 18000, 16500, 20000, 22000], # Last 5 months
         "labels_daily": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
