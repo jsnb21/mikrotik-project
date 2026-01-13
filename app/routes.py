@@ -1,7 +1,12 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
+<<<<<<< Updated upstream
 from flask_login import login_user, logout_user, login_required, current_user
 from . import db, login_manager
 from .models import Voucher, Admin
+=======
+from . import db
+from .models import Voucher
+>>>>>>> Stashed changes
 from .utils import mikrotik_allow_mac
 from datetime import datetime, timezone
 from sqlalchemy import func
@@ -53,6 +58,7 @@ def logout():
 
 @bp.route('/')
 def index():
+<<<<<<< Updated upstream
     # Check if user has an active session in cookies
     if 'active_code' in session:
         code = session['active_code']
@@ -63,16 +69,43 @@ def index():
             # Clean up expired session
             session.pop('active_code', None)
             
+=======
+    # Capture MikroTik hotspot parameters
+    mac_address = request.args.get('mac', '') or request.form.get('mac', '')
+    ip_address = request.args.get('ip', '') or request.form.get('ip', '')
+    link_orig = request.args.get('link-orig', '') or request.form.get('link-orig', '')
+    
+    # Store in session for use in other routes
+    if mac_address:
+        session['hotspot_mac'] = mac_address
+        session['hotspot_ip'] = ip_address
+        session['hotspot_link_orig'] = link_orig
+    
+    # If called from MikroTik hotspot, use hotspot template
+    if mac_address:
+        return render_template('login.html', 
+                             mac_address=mac_address,
+                             ip_address=ip_address,
+                             link_orig=link_orig)
+    
+>>>>>>> Stashed changes
     return render_template('index.html')
 
 @bp.route('/activate', methods=['POST'])
 def activate():
+    from flask import session
     code = request.form.get('voucher_code', '').strip().upper()
+<<<<<<< Updated upstream
 
     # In a real app, getting MAC address from a web request is tricky if not behind the captive portal.
     # The captive portal usually passes the MAC as a query param or header.
     # For this demo, we'll assume it's passed or simulate it.
     mac_address = request.form.get('mac_address') or '00:00:00:00:00:00' 
+=======
+    
+    # Get MAC address from session (passed by MikroTik hotspot)
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00' 
+>>>>>>> Stashed changes
     
     # Basic rate limiting could go here (Redis/memcached) 
     
@@ -255,3 +288,88 @@ def reset_vouchers():
         flash(f"Error resetting vouchers: {str(e)}", "error")
         
     return redirect(url_for('main.admin_dashboard'))
+
+
+@bp.route('/test', methods=['GET', 'POST'])
+def test_connection():
+    """Test endpoint to verify phone can communicate with Flask server"""
+    try:
+        # Try to get JSON data, but don't fail if it's not there
+        if request.method == 'POST':
+            data = request.get_json(silent=True) or {}
+        else:
+            data = {'method': 'GET'}
+        
+        # Get client information
+        client_ip = request.remote_addr
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        host = request.headers.get('Host', 'Unknown')
+        
+        # Log the connection attempt in terminal
+        print("=" * 60)
+        print("🔔 TEST CONNECTION RECEIVED!")
+        print("=" * 60)
+        print(f"📱 Client IP: {client_ip}")
+        print(f"🌐 User Agent: {user_agent}")
+        print(f"🏠 Host Header: {host}")
+        print(f"📦 Data received: {data}")
+        print(f"🔧 Method: {request.method}")
+        print("=" * 60)
+        
+        # Send success response back to phone
+        response_data = {
+            'status': 'success',
+            'message': 'Connection successful! Flask received your request.',
+            'server_time': datetime.now(timezone.utc).isoformat(),
+            'client_ip': client_ip,
+            'host': host,
+            'method': request.method,
+            'data_received': data
+        }
+        
+        return jsonify(response_data), 200
+    except Exception as e:
+        print(f"❌ ERROR in test endpoint: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/info')
+def server_info():
+    """Show server information to help with connection"""
+    import socket
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    
+    info = f"""
+    <html>
+    <head>
+        <title>Flask Server Info</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{ font-family: Arial; padding: 20px; background: #f0f0f0; }}
+            .box {{ background: white; padding: 20px; border-radius: 10px; margin: 10px 0; }}
+            h2 {{ color: #2563eb; }}
+            code {{ background: #e5e7eb; padding: 5px 10px; border-radius: 5px; display: block; margin: 5px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h2>✅ Flask is Running!</h2>
+            <p><strong>Server IP:</strong> <code>{local_ip}</code></p>
+            <p><strong>Port:</strong> <code>5000</code></p>
+            <p><strong>Your IP:</strong> <code>{request.remote_addr}</code></p>
+        </div>
+        <div class="box">
+            <h2>📱 Access from Phone:</h2>
+            <p>Use this URL on your phone:</p>
+            <code>http://{local_ip}:5000/</code>
+        </div>
+        <div class="box">
+            <h2>🧪 Test Endpoint:</h2>
+            <code>http://{local_ip}:5000/test</code>
+            <p><a href="/test" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">Test Now</a></p>
+        </div>
+    </body>
+    </html>
+    """
+    return info

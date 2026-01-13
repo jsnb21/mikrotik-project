@@ -10,6 +10,10 @@ login_manager.login_view = 'main.login'
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    
+    # Allow requests from your domain and local IP
+    app.config['SERVER_NAME'] = None  # Don't enforce SERVER_NAME, allow all hosts
+    app.config['TRUSTED_HOSTS'] = ['192.168.88.254', 'neuronet.ai', '*.neuronet.ai']
 
     db.init_app(app)
     login_manager.init_app(app)
