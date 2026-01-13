@@ -2,146 +2,229 @@
 
 {% block content %}
 <div class="container mx-auto mt-6">
-    <h1 class="text-3xl font-bold mb-6 text-gray-800">Admin Dashboard</h1>
-
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
-            <div class="text-gray-500 text-sm">Total Vouchers</div>
-            <div class="text-2xl font-bold">{{ total }}</div>
-        </div>
-        <div class="bg-white p-4 rounded shadow border-l-4 border-green-500">
-            <div class="text-gray-500 text-sm">Active / Used</div>
-            <div class="text-2xl font-bold">{{ used }}</div>
-        </div>
-        <div class="bg-white p-4 rounded shadow border-l-4 border-gray-500">
-            <div class="text-gray-500 text-sm">Inventory (Unused)</div>
-            <div class="text-2xl font-bold">{{ unused }}</div>
-        </div>
-        <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-500">
-            <div class="text-gray-500 text-sm">Total Revenue</div>
-            <div class="text-2xl font-bold">₱{{ revenue }}</div>
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-800">Network Dashboard</h1>
+        <div class="flex gap-2 items-center">
+            <span class="text-gray-600 mr-2">Hello, <b>{{ current_user.username }}</b></span>
+            <a href="{{ url_for('main.admin_settings') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-bold">Settings</a>
+            <a href="{{ url_for('main.logout') }}" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm font-bold">Logout</a>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        <!-- Voucher Generator -->
-        <div class="bg-white p-6 rounded shadow">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Generate Vouchers</h2>
-                <form action="{{ url_for('main.reset_vouchers') }}" method="POST" onsubmit="return confirm('WARNING: This will delete ALL vouchers. Are you sure?');">
-                    <button type="submit" class="text-xs bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 font-bold border border-red-200">
-                        Reset DB (Test Only)
-                    </button>
-                </form>
+    <div class="mb-6 border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <button onclick="switchTab('network')" id="tab-network" class="tab-btn border-[#0b343d] text-[#0b343d] whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Network Graphs
+            </button>
+            <button onclick="switchTab('finance')" id="tab-finance" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Income Graphs
+            </button>
+            <button onclick="switchTab('sessions')" id="tab-sessions" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                Active Sessions
+            </button>
+        </nav>
+    </div>
+
+    <!-- Network Tab -->
+    <div id="content-network" class="tab-content">
+        <!-- System Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+                <div class="text-gray-500 text-sm">System Uptime</div>
+                <div class="text-lg font-bold">{{ system_stats.uptime }}</div>
             </div>
-            <form action="{{ url_for('main.generate_vouchers') }}" method="POST" class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Quantity</label>
-                        <input type="number" name="amount" value="10" class="mt-1 block w-full border border-gray-300 rounded p-2">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Price (₱)</label>
-                        <input type="number" step="0.01" name="price" value="5.00" class="mt-1 block w-full border border-gray-300 rounded p-2">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Duration (Minutes)</label>
-                    <select name="duration" class="mt-1 block w-full border border-gray-300 rounded p-2">
-                        <option value="60">1 Hour (60m)</option>
-                        <option value="180">3 Hours (180m)</option>
-                        <option value="300">5 Hours (300m)</option>
-                        <option value="1440">1 Day (1440m)</option>
-                    </select>
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700">Generate</button>
-            </form>
+            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500">
+                <div class="text-gray-500 text-sm">CPU Load</div>
+                <div class="text-2xl font-bold">{{ system_stats.cpu_load }}%</div>
+            </div>
+             <div class="bg-white p-4 rounded shadow border-l-4 border-purple-500">
+                <div class="text-gray-500 text-sm">Free Memory</div>
+                <div class="text-2xl font-bold">{{ (system_stats.free_memory / 1024 / 1024)|round(1) }} MB</div>
+            </div>
+            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-500">
+                <div class="text-gray-500 text-sm">Board Name</div>
+                <div class="text-lg font-bold">{{ system_stats.board_name }}</div>
+            </div>
         </div>
 
-        <!-- Charts -->
-        <div class="bg-white p-6 rounded shadow">
-            <h2 class="text-xl font-bold mb-4">Analytics</h2>
-            <canvas id="usageChart"></canvas>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <!-- Interface Traffic -->
+            <div class="bg-white p-6 rounded shadow relative">
+                 <h2 class="text-xl font-bold mb-4">Live Traffic (ether1)</h2>
+                 <div class="grid grid-cols-2 gap-4 text-center">
+                     <div class="p-4 bg-gray-50 rounded">
+                         <div class="text-sm text-gray-500">Download</div>
+                         <div class="text-xl font-bold text-green-600">{{ (traffic.rx_bps / 1000000)|round(2) }} Mbps</div>
+                     </div>
+                     <div class="p-4 bg-gray-50 rounded">
+                         <div class="text-sm text-gray-500">Upload</div>
+                         <div class="text-xl font-bold text-blue-600">{{ (traffic.tx_bps / 1000000)|round(2) }} Mbps</div>
+                     </div>
+                 </div>
+            </div>
+
+            <!-- Charts Placeholder -->
+            <div class="bg-white p-6 rounded shadow">
+                <h2 class="text-xl font-bold mb-4">Traffic History</h2>
+                <div class="h-64">
+                    <canvas id="trafficChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Recent Vouchers Table -->
-    <div class="bg-white p-6 rounded shadow mt-8">
-        <h2 class="text-xl font-bold mb-4">Recent Vouchers</h2>
-        <div class="overflow-x-auto">
-            <table class="min-w-full leading-normal">
-                <thead>
-                    <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Code
-                        </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Status
-                        </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Duration
-                        </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Price
-                        </th>
-                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Created
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for voucher in vouchers %}
-                    <tr>
-                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                            <span class="font-mono font-bold text-gray-900">{{ voucher.code }}</span>
-                        </td>
-                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                            <span class="relative inline-block px-3 py-1 font-semibold leading-tight">
-                                <span aria-hidden class="absolute inset-0 {{ 'bg-red-200' if voucher.is_activated else 'bg-green-200' }} opacity-50 rounded-full"></span>
-                                <span class="relative {{ 'text-red-900' if voucher.is_activated else 'text-green-900' }}">
-                                    {{ 'Used' if voucher.is_activated else 'Available' }}
+    <!-- Finance Tab -->
+    <div id="content-finance" class="tab-content hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="bg-white p-6 rounded shadow">
+                <h2 class="text-xl font-bold mb-4">Daily Income (Last 7 Days)</h2>
+                <div class="h-64">
+                    <canvas id="dailyIncomeChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded shadow">
+                <h2 class="text-xl font-bold mb-4">Monthly Income</h2>
+                <div class="h-64">
+                    <canvas id="monthlyIncomeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sessions Tab -->
+    <div id="content-sessions" class="tab-content hidden">
+        <!-- Active Users Table -->
+        <div class="bg-white p-6 rounded shadow">
+            <h2 class="text-xl font-bold mb-4">Active Hotspot Users</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full leading-normal">
+                    <thead>
+                        <tr>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">User</th>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">MAC Address</th>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Uptime</th>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Time Left</th>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Data In</th>
+                            <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Data Out</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in active_users %}
+                        <tr>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <p class="text-gray-900 whitespace-no-wrap font-bold">{{ user.user }}</p>
+                            </td>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <p class="text-gray-900 whitespace-no-wrap font-mono">{{ user.mac }}</p>
+                            </td>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <span class="relative inline-block px-3 py-1 font-semibold text-green-900 leading-tight">
+                                    <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
+                                    <span class="relative">{{ user.uptime }}</span>
                                 </span>
-                            </span>
-                        </td>
-                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                            {{ voucher.duration_minutes }}m
-                        </td>
-                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                            ₱{{ voucher.price_amount }}
-                        </td>
-                         <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                            {{ voucher.created_at.strftime('%Y-%m-%d %H:%M') }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            </td>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <span class="text-blue-600 font-bold">{{ user.time_left }}</span>
+                            </td>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <p class="text-gray-900 whitespace-no-wrap">{{ (user.bytes_in / 1024 / 1024)|round(2) }} MB</p>
+                            </td>
+                            <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                                <p class="text-gray-900 whitespace-no-wrap">{{ (user.bytes_out / 1024 / 1024)|round(2) }} MB</p>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="px-5 py-5 border-b border-gray-200 bg-white text-sm text-center">No active users found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
 
+<script id="income-data" type="application/json">
+    {{ income_stats | tojson }}
+</script>
 <script>
-    const ctx = document.getElementById('usageChart').getContext('2d');
-    const usageChart = new Chart(ctx, {
-        type: 'doughnut',
+    const incomeStats = JSON.parse(document.getElementById('income-data').textContent);
+
+    function switchTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        
+        // Show selected tab
+        document.getElementById('content-' + tabName).classList.remove('hidden');
+        
+        // Reset buttons style
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('border-[#0b343d]', 'text-[#0b343d]');
+            btn.classList.add('border-transparent', 'text-gray-500');
+        });
+        
+        // Highlight active button
+        const activeBtn = document.getElementById('tab-' + tabName);
+        activeBtn.classList.remove('border-transparent', 'text-gray-500');
+        activeBtn.classList.add('border-[#0b343d]', 'text-[#0b343d]');
+    }
+
+    // Traffic Chart (Existing)
+    const ctx = document.getElementById('trafficChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
         data: {
-            labels: ['Used', 'Unused'],
+            labels: ['10:00', '10:05', '10:10', '10:15', '10:20', '10:25'],
             datasets: [{
-                data: [Number("{{ used }}"), Number("{{ unused }}")],
-                backgroundColor: ['#10B981', '#E5E7EB'],
-                borderWidth: 0
+                label: 'Download (Mbps)',
+                borderColor: 'rgb(75, 192, 192)',
+                data: [0, 10, 5, 2, 20, 30, 45],
+                tension: 0.1
+            }, {
+                label: 'Upload (Mbps)',
+                borderColor: 'rgb(54, 162, 235)',
+                data: [0, 5, 2, 1, 10, 15, 20],
+                tension: 0.1
             }]
         },
         options: {
             responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                }
-            }
+            maintainAspectRatio: false
         }
+    });
+
+    // Daily Income Chart
+    const ctxDaily = document.getElementById('dailyIncomeChart').getContext('2d');
+    new Chart(ctxDaily, {
+        type: 'bar',
+        data: {
+            labels: incomeStats.labels_daily,
+            datasets: [{
+                label: 'Revenue (₱)',
+                data: incomeStats.daily,
+                backgroundColor: '#3B82F6'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    // Monthly Income Chart
+    const ctxMonthly = document.getElementById('monthlyIncomeChart').getContext('2d');
+    new Chart(ctxMonthly, {
+        type: 'line',
+        data: {
+            labels: incomeStats.labels_monthly,
+            datasets: [{
+                label: 'Revenue (₱)',
+                data: incomeStats.monthly,
+                borderColor: '#10B981',
+                tension: 0.1,
+                fill: true,
+                backgroundColor: 'rgba(16, 185, 129, 0.1)'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
     });
 </script>
 {% endblock %}

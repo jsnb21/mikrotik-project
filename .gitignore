@@ -1,15 +1,3 @@
-__pycache__/config.cpython-312.pyc
-app/__pycache__/__init__.cpython-312.pyc
-app/__pycache__/models.cpython-312.pyc
-app/__pycache__/routes.cpython-312.pyc
-app/__pycache__/utils.cpython-312.pyc
-app/routes.py
-app/templates/index.html
-app/templates/login.html
-app/templates/login2.html
-app/utils.py
-config.py
-mikrotik_hotspot_files/login.html
 myenv/Include/site/python3.12/greenlet/greenlet.h
 myenv/Lib/site-packages/__pycache__/six.cpython-312.pyc
 myenv/Lib/site-packages/__pycache__/typing_extensions.cpython-312.pyc

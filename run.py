@@ -1,11 +1,17 @@
 from app import create_app, db
-from app.models import Voucher
+from app.models import Admin
 
 app = create_app()
 
 @app.shell_context_processor
 def make_shell_context():
-    return {'db': db, 'Voucher': Voucher}
+    return {'db': db, 'Admin': Admin}
+
+# Add before request hook to handle any Host header issues
+@app.before_request
+def handle_host_header():
+    """Allow requests from any host/domain"""
+    pass
 
 if __name__ == '__main__':
     # Initial setup for demo purposes: Create DB on first run if it doesn't exist
@@ -13,4 +19,5 @@ if __name__ == '__main__':
         db.create_all()
     
     # Run on 0.0.0.0 to be accessible from hotspot network
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # This allows access via IP (192.168.88.254) and domain (neuronet.ai)
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)

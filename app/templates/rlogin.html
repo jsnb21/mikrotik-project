@@ -1,27 +1,45 @@
 $(if http-status == 302)Hotspot login required$(endif)
-$(if http-header == "Location")$(link-redirect)$(endif)
+$(if http-header == "Location")http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)$(endif)
 <html>
-<!--
-<?xml version="1.0" encoding="UTF-8"?>
-  <WISPAccessGatewayParam
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:noNamespaceSchemaLocation="http://$(hostname)/xml/WISPAccessGatewayParam.xsd">
-    <Redirect>
-	<AccessProcedure>1.0</AccessProcedure>
-	<AccessLocation>$(location-id)</AccessLocation>
-	<LocationName>$(location-name)</LocationName>
-	<LoginURL>$(link-login-only)?target=xml</LoginURL>
-	<MessageType>100</MessageType>
-	<ResponseCode>0</ResponseCode>
-    </Redirect>
-  </WISPAccessGatewayParam>
--->
 <head>
-<title>...</title>
-<meta http-equiv="refresh" content="0; url=$(link-redirect)">
+<title>Hotspot Login</title>
+<meta http-equiv="refresh" content="0; url=http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)">
 <meta http-equiv="pragma" content="no-cache">
 <meta http-equiv="expires" content="-1">
+<style>
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.loader {
+    text-align: center;
+    color: white;
+}
+.spinner {
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
 </head>
 <body>
+<div class="loader">
+    <div class="spinner"></div>
+    <h2>Redirecting to login page...</h2>
+    <p>If you are not redirected, <a href="http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)" style="color: #fff; text-decoration: underline;">click here</a></p>
+</div>
 </body>
 </html>

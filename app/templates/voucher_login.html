@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white rounded-xl shadow-2xl overflow-hidden">
+        <!-- Header -->
+        <div class="card-header">
+            <svg class="w-16 h-16 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path>
+            </svg>
+            <h1 class="text-3xl font-bold mb-2">WiFi Portal</h1>
+            <p class="text-blue-100">Connect to the Internet</p>
+        </div>
+
+        <!-- Body -->
+        <div class="card-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert {% if category == 'error' %}alert-error{% else %}alert-success{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('main.activate') }}" method="POST" class="space-y-5">
+                <div>
+                    <label for="voucher_code">
+                        Voucher Code
+                    </label>
+                    <input 
+                        type="text" 
+                        name="voucher_code" 
+                        id="voucher_code" 
+                        placeholder="Enter your code" 
+                        required
+                        autofocus
+                    >
+                    <p class="text-xs text-gray-500 mt-1">Codes are case-insensitive</p>
+                </div>
+
+                <!-- Hidden fields for MikroTik parameters -->
+                {% if mac_address %}
+                <input type="hidden" name="mac_address" value="{{ mac_address }}">
+                {% endif %}
+                {% if ip_address %}
+                <input type="hidden" name="ip_address" value="{{ ip_address }}">
+                {% endif %}
+
+                <button 
+                    type="submit" 
+                    class="btn btn-primary"
+                >
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    Connect Now
+                </button>
+            </form>
+
+            <!-- Test Connection Button -->
+            <div class="mt-4">
+                <a href="/test" target="_blank" class="btn btn-purple block">
+                    Open /test in new tab
+                </a>
+                <button 
+                    id="testConnectionBtn"
+                    type="button" 
+                    class="btn btn-success"
+                    onclick="testConnection()"
+                >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Test Connection (AJAX)
+                </button>
+                <div id="testResult" class="mt-2 text-sm"></div>
+                <div id="debugInfo" class="mt-2 p-2 bg-gray-100 rounded-lg text-xs text-left"></div>
+            </div>
+
+            <script>
+                // Show debug info on page load
+                window.onload = function() {
+                    const debugDiv = document.getElementById('debugInfo');
+                    const currentUrl = window.location.href;
+                    const testUrl = window.location.origin + '/test';
+                    debugDiv.innerHTML = '<strong>Debug Info:</strong><br>' +
+                        'Current URL: ' + currentUrl + '<br>' +
+                        'Test endpoint: ' + testUrl + '<br>' +
+                        'Time: ' + new Date().toLocaleTimeString();
+                };
+                
+                function testConnection() {
+                    const btn = document.getElementById('testConnectionBtn');
+                    const resultDiv = document.getElementById('testResult');
+                    const debugDiv = document.getElementById('debugInfo');
+                    const testUrl = window.location.origin + '/test';
+                    
+                    // Disable button and show loading
+                    btn.disabled = true;
+                    btn.innerHTML = '<svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Testing...';
+                    resultDiv.innerHTML = '';
+                    
+                    debugDiv.innerHTML = '<strong>Requesting:</strong> ' + testUrl + '<br>Status: Sending...<br>Method: POST';
+                    
+                    // Make AJAX request to test endpoint
+                    fetch(testUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: 'Hello from phone!',
+                            timestamp: new Date().toISOString()
+                        }),
+                        cache: 'no-cache'
+                    })
+                    .then(response => {
+                        debugDiv.innerHTML += '<br>Status Code: ' + response.status + '<br>Status Text: ' + response.statusText + '<br>Content-Type: ' + response.headers.get('content-type');
+                        
+                        // Get response as text first to see what we actually got
+                        return response.text().then(text => {
+                            debugDiv.innerHTML += '<br>Response (first 200 chars): ' + text.substring(0, 200);
+                            
+                            if (!response.ok) {
+                                throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 100));
+                            }
+                            
+                            // Try to parse as JSON
+                            try {
+                                return JSON.parse(text);
+                            } catch (e) {
+                                throw new Error('Response is not JSON: ' + text.substring(0, 100));
+                            }
+                        });
+                    })
+                    .then(data => {
+                        // Success!
+                        resultDiv.innerHTML = '<div class="result-success">✓ ' + data.message + '<br><small>Your IP: ' + data.client_ip + '</small></div>';
+                        debugDiv.innerHTML += '<br><strong style="color: green;">SUCCESS!</strong>';
+                    })
+                    .catch(error => {
+                        // Error
+                        resultDiv.innerHTML = '<div class="result-error">✗ ' + error.message + '</div>';
+                        debugDiv.innerHTML += '<br><strong style="color: red;">ERROR: ' + error.message + '</strong>';
+                    })
+                    .finally(() => {
+                        // Re-enable button
+                        btn.disabled = false;
+                        btn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Test Connection (AJAX)';
+                    });
+                }
+            </script>
+
+            <!-- Device Info -->
+            {% if mac_address or ip_address %}
+            <div class="device-info">
+                <p class="text-xs text-gray-600 mb-2 font-semibold">Device Information:</p>
+                <div class="bg-gray-50 rounded-lg p-3 space-y-1 text-xs font-mono text-gray-700">
+                    {% if mac_address %}
+                    <p><span class="text-gray-500">MAC:</span> {{ mac_address }}</p>
+                    {% endif %}
+                    {% if ip_address %}
+                    <p><span class="text-gray-500">IP:</span> {{ ip_address }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer with pricing -->
+        <div class="card-footer">
+            <p class="text-xs font-semibold text-gray-700 mb-3">Available Plans:</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="pricing-card">
+                    <p class="price">₱5.00</p>
+                    <p class="duration">1 Hour</p>
+                </div>
+                <div class="pricing-card">
+                    <p class="price">₱10.00</p>
+                    <p class="duration">3 Hours</p>
+                </div>
+                <div class="pricing-card col-span-2">
+                    <p class="price">₱25.00</p>
+                    <p class="duration">24 Hours</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Support Info -->
+        <div class="support-footer">
+            <p class="text-xs text-gray-600">
+                Need help? <a href="tel:+1234567890" class="text-blue-600 font-semibold hover:underline">Contact Support</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
