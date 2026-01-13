@@ -45,12 +45,16 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/notification.js') }}"></script>
 <script src="{{ url_for('static', filename='js/status.js') }}"></script>
 <script>
   // Initialize status page with Jinja2 variables
   const code = '{{ voucher.code }}';
   const isDeveloper = {{ 'true' if is_developer else 'false' }};
   initializeStatusPage(code, isDeveloper);
+  
+  // Show initial notification
+  notifySuccess('Connected', 'You now have internet access!');
 </script>
 
 {% endblock %}

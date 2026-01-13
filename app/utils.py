@@ -112,6 +112,31 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
         except Exception:
             pass
 
+def get_mac_from_active_session(client_ip):
+    """Get MAC address from MikroTik active hotspot sessions by client IP."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return None
+    
+    try:
+        api = api_pool.get_api()
+        active = api.get_resource('/ip/hotspot/active')
+        sessions = active.get(**{'address': client_ip})
+        
+        if sessions and isinstance(sessions, list) and len(sessions) > 0:
+            mac = sessions[0].get('mac-address')
+            print(f"[MIKROTIK] Found active session for IP {client_ip}: MAC {mac}")
+            return mac
+    except Exception as e:
+        print(f"[MIKROTIK] Error looking up active session for IP {client_ip}: {str(e)}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+    
+    return None
+
 def get_mikrotik_active_hotspot_users():
     """
     Mock function to fetch active hotspot users.

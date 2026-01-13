@@ -20,6 +20,8 @@ function formatTime(seconds) {
 function initializeStatusPage(code, isDeveloper) {
   const countdownEl = document.getElementById('countdown');
   const expiryEl = document.getElementById('expiry');
+  let lastWarnedAt = 0;
+  let sessionExpiredNotified = false;
 
   function fetchStatus() {
     // Skip polling for developer codes
@@ -31,8 +33,24 @@ function initializeStatusPage(code, isDeveloper) {
         const secs = data.remaining_seconds || 0;
         countdownEl.textContent = formatTime(secs);
         if (data.expiry_time) expiryEl.textContent = 'Expires: ' + new Date(data.expiry_time).toLocaleString();
-        if (!data.active || secs <= 0) {
-          // Session expired — update UI
+        
+        // Show warnings as time runs out
+        if (secs > 0) {
+          if (secs <= 60 && Date.now() - lastWarnedAt > 30000) {
+            notifyWarning('Time Running Out', `Only ${formatTime(secs)} left!`);
+            lastWarnedAt = Date.now();
+          }
+          
+          // Update UI
+          countdownEl.classList.remove('text-red-600');
+          countdownEl.classList.add('text-green-600');
+          sessionExpiredNotified = false;
+        } else {
+          // Session expired
+          if (!sessionExpiredNotified) {
+            notifyError('Session Expired', 'Your internet access has ended. Please get a new voucher.');
+            sessionExpiredNotified = true;
+          }
           countdownEl.classList.remove('text-green-600');
           countdownEl.classList.add('text-red-600');
         }

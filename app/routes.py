@@ -7,7 +7,8 @@ from .utils import (
     get_mikrotik_active_hotspot_users, 
     get_mikrotik_interface_traffic,
     get_income_stats,
-    mikrotik_allow_mac
+    mikrotik_allow_mac,
+    get_mac_from_active_session
 )
 from datetime import datetime, timezone
 import string
@@ -62,6 +63,7 @@ def index():
     mac_address = request.args.get('mac', '') or request.form.get('mac', '')
     ip_address = request.args.get('ip', '') or request.form.get('ip', '')
     link_orig = request.args.get('link-orig', '') or request.form.get('link-orig', '')
+    client_ip = request.remote_addr
     
     # Store in session for use in other routes
     if mac_address:
@@ -78,6 +80,23 @@ def index():
         else:
             # Clean up expired session
             session.pop('active_code', None)
+    
+    # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
+    if not mac_address:
+        mac_address = get_mac_from_active_session(client_ip)
+    
+    # Check if MAC address has an active voucher
+    if mac_address:
+        active_voucher = Voucher.query.filter(
+            Voucher.user_mac_address == mac_address,
+            Voucher.activated_at != None
+        ).order_by(Voucher.expires_at.desc()).first()
+        
+        if active_voucher and active_voucher.remaining_seconds > 0:
+            session['active_code'] = active_voucher.code
+            session['hotspot_mac'] = mac_address  # Store MAC in session
+            current_app.logger.info("Index: Redirecting to status: code=%s MAC=%s", active_voucher.code, mac_address)
+            return redirect(url_for('main.status_page', code=active_voucher.code))
 
     # If called from MikroTik hotspot, use hotspot template
     if mac_address:
