@@ -9,15 +9,45 @@ bp = Blueprint('main', __name__)
 
 @bp.route('/')
 def index():
+<<<<<<< Updated upstream
+=======
+    # Capture MikroTik hotspot parameters
+    mac_address = request.args.get('mac', '')
+    ip_address = request.args.get('ip', '')
+    link_orig = request.args.get('link-orig', '')
+    
+    # Store in session for later use
+    if mac_address:
+        session['hotspot_mac'] = mac_address
+        session['hotspot_ip'] = ip_address
+        session['hotspot_link_orig'] = link_orig
+    
+    # Check if user has an active session in cookies
+    if 'active_code' in session:
+        code = session['active_code']
+        voucher = Voucher.query.filter_by(code=code).first()
+        if voucher and voucher.remaining_seconds > 0:
+            return redirect(url_for('main.status_page', code=code))
+        else:
+            # Clean up expired session
+            session.pop('active_code', None)
+            
+>>>>>>> Stashed changes
     return render_template('index.html')
 
 @bp.route('/activate', methods=['POST'])
 def activate():
     code = request.form.get('voucher_code', '').strip().upper()
+<<<<<<< Updated upstream
     # In a real app, getting MAC address from a web request is tricky if not behind the captive portal.
     # The captive portal usually passes the MAC as a query param or header.
     # For this demo, we'll assume it's passed or simulate it.
     mac_address = request.form.get('mac_address') or '00:00:00:00:00:00' 
+=======
+
+    # Get MAC address from session (passed by MikroTik hotspot)
+    mac_address = session.get('hotspot_mac', request.form.get('mac_address', '00:00:00:00:00:00')) 
+>>>>>>> Stashed changes
     
     # Basic rate limiting could go here (Redis/memcached) 
     

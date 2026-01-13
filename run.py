@@ -11,5 +11,6 @@ if __name__ == '__main__':
     # Initial setup for demo purposes: Create DB on first run if it doesn't exist
     with app.app_context():
         db.create_all()
-        
-    app.run(debug=True, port=5000)
+    
+    # Run on 0.0.0.0 to be accessible from hotspot network
+    app.run(debug=True, host='0.0.0.0', port=5000)
