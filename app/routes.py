@@ -1,10 +1,15 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
-from flask_login import login_required, current_user, login_user, logout_user
+from flask_login import login_user, logout_user, login_required, current_user
 from . import db, login_manager
-from .models import Voucher, Admin
-from .utils import mikrotik_allow_mac
+from .models import Admin, Voucher
+from .utils import (
+    get_mikrotik_system_stats, 
+    get_mikrotik_active_hotspot_users, 
+    get_mikrotik_interface_traffic,
+    get_income_stats,
+    mikrotik_allow_mac
+)
 from datetime import datetime, timezone
-from sqlalchemy import func
 import string
 import secrets
 
@@ -64,13 +69,6 @@ def index():
         session['hotspot_ip'] = ip_address
         session['hotspot_link_orig'] = link_orig
     
-    # If called from MikroTik hotspot, use hotspot template
-    if mac_address:
-        return render_template('voucher_login.html', 
-                             mac_address=mac_address,
-                             ip_address=ip_address,
-                             link_orig=link_orig)
-    
     # Check if user has an active session in cookies
     if 'active_code' in session:
         code = session['active_code']
@@ -80,8 +78,15 @@ def index():
         else:
             # Clean up expired session
             session.pop('active_code', None)
+
+    # If called from MikroTik hotspot, use hotspot template
+    if mac_address:
+        return render_template('voucher_login.html', 
+                             mac_address=mac_address,
+                             ip_address=ip_address,
+                             link_orig=link_orig)
     
-    return render_template('voucher_login.html')
+    return render_template('index.html')
 
 @bp.route('/activate', methods=['POST'])
 def activate():
@@ -160,42 +165,19 @@ def api_status(code_or_mac):
 @bp.route('/admin')
 @login_required
 def admin_dashboard():
-    # Analytics Logic
-    now = datetime.now(timezone.utc)
+    # Fetch Analytics from MikroTik
+    system_stats = get_mikrotik_system_stats()
+    active_users = get_mikrotik_active_hotspot_users()
+    traffic = get_mikrotik_interface_traffic()
+    income_stats = get_income_stats()
     
-    total_vouchers = Voucher.query.count()
-    
-    # Active: Activated AND Expires in Future
-    active_vouchers = Voucher.query.filter(
-        Voucher.is_activated == True,
-        Voucher.expires_at > now
-    ).count()
-    
-    # Used (Expired): Activated AND Expires in Past
-    used_vouchers = Voucher.query.filter(
-        Voucher.is_activated == True,
-        Voucher.expires_at <= now
-    ).count()
-    
-    # Unused: Not Activated
-    unused_vouchers = Voucher.query.filter_by(is_activated=False).count()
-    
-    # Revenue
-    revenue = db.session.query(func.sum(Voucher.price_amount)).filter_by(is_activated=True).scalar() or 0
-    
-    # Recent Vouchers
-    recent_vouchers = Voucher.query.order_by(Voucher.created_at.desc()).limit(20).all()
-    
-    # All Admins (for management list)
     admins = Admin.query.all()
 
     return render_template('admin.html', 
-                           total=total_vouchers, 
-                           active=active_vouchers,
-                           used=used_vouchers, 
-                           unused=unused_vouchers,
-                           revenue=revenue,
-                           vouchers=recent_vouchers,
+                           system_stats=system_stats,
+                           active_users=active_users,
+                           traffic=traffic,
+                           income_stats=income_stats,
                            admins=admins,
                            current_user=current_user)
 
@@ -204,28 +186,6 @@ def admin_dashboard():
 def admin_settings():
     admins = Admin.query.all()
     return render_template('admin_settings.html', admins=admins)
-
-@bp.route('/admin/generate', methods=['POST'])
-@login_required
-def generate_vouchers():
-    amount = int(request.form.get('amount', 10))
-    duration = int(request.form.get('duration', 60))
-    price = float(request.form.get('price', 10.00))
-    
-    new_vouchers = []
-    for _ in range(amount):
-        code = Voucher.generate_code()
-        # Ensure uniqueness (simple retry logic)
-        while Voucher.query.filter_by(code=code).first():
-            code = Voucher.generate_code()
-            
-        v = Voucher(code=code, duration_minutes=duration, price_amount=price)
-        db.session.add(v)
-        new_vouchers.append(code)
-        
-    db.session.commit()
-    flash(f"Generated {amount} vouchers.", "success")
-    return redirect(url_for('main.admin_dashboard'))
 
 @bp.route('/admin/add-admin', methods=['POST'])
 @login_required
@@ -255,8 +215,6 @@ def change_password():
         current_user.set_password(new_password)
         db.session.commit()
         flash("Password updated successfully.", "success")
-    else:
-        flash("Password cannot be empty.", "error")
     return redirect(url_for('main.admin_settings'))
 
 @bp.route('/admin/reset', methods=['POST'])

@@ -1,11 +1,11 @@
 from app import create_app, db
-from app.models import Voucher
+from app.models import Admin
 
 app = create_app()
 
 @app.shell_context_processor
 def make_shell_context():
-    return {'db': db, 'Voucher': Voucher}
+    return {'db': db, 'Admin': Admin}
 
 # Add before request hook to handle any Host header issues
 @app.before_request
