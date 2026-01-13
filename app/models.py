@@ -30,6 +30,7 @@ class Voucher(db.Model):
     activated_at = db.Column(db.DateTime, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=True)
     user_mac_address = db.Column(db.String(17), nullable=True)
+    is_developer = db.Column(db.Boolean, default=False)  # Developer code that never expires
 
     @property
     def is_activated(self):
@@ -41,9 +42,18 @@ class Voucher(db.Model):
         if not self.is_activated:
             return self.duration
         
+        # Developer codes never expire
+        if self.is_developer:
+            return 999999999  # Very large number to indicate infinite
+        
         now = datetime.now(timezone.utc)
-        if self.expires_at and now < self.expires_at:
-            return int((self.expires_at - now).total_seconds())
+        if self.expires_at:
+            # Ensure expires_at is timezone-aware (SQLite stores datetimes naively)
+            expires_at = self.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if now < expires_at:
+                return int((expires_at - now).total_seconds())
         return 0
 
     def activate(self, mac_address):

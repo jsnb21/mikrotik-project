@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from . import db, login_manager
 from .models import Admin, Voucher
@@ -93,6 +93,9 @@ def activate():
     from flask import session
     code = request.form.get('voucher_code', '').strip().upper()
     
+    # Log incoming activation attempt
+    current_app.logger.info("Activate attempt: code=%s, form_keys=%s, session_has_hotspot=%s", code, list(request.form.keys()), 'hotspot_mac' in session)
+
     # Get MAC address from session (passed by MikroTik hotspot), form, or use default
     mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00'
     
@@ -101,10 +104,12 @@ def activate():
     voucher = Voucher.query.filter_by(code=code).first()
     
     if not voucher:
+        current_app.logger.warning("Activate failed: voucher not found code=%s", code)
         flash("Invalid Voucher Code", "error")
         return redirect(url_for('main.index'))
         
     if voucher.is_activated:
+        current_app.logger.info("Voucher already activated: code=%s, mac=%s, remaining=%s", code, voucher.user_mac_address, voucher.remaining_seconds)
         # Check if it's the same user re-entering the code?
         if voucher.user_mac_address == mac_address and voucher.remaining_seconds > 0:
              session['active_code'] = code # Ensure session is set
@@ -115,16 +120,23 @@ def activate():
 
     try:
         # Activate Session Logic
+        current_app.logger.info("Activating voucher %s for MAC %s", code, mac_address)
         voucher.activate(mac_address)
         db.session.commit()
+        db.session.refresh(voucher)  # Refresh to ensure object is synced with database
+        current_app.logger.info("Activated voucher %s (developer=%s): activated_at=%s expires_at=%s remaining=%s", voucher.code, voucher.is_developer, voucher.activated_at, voucher.expires_at, voucher.remaining_seconds)
         
         # Integration with MikroTik
-        mikrotik_allow_mac(mac_address, voucher.remaining_seconds)
+        try:
+            mikrotik_allow_mac(mac_address, voucher.remaining_seconds)
+        except Exception:
+            current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
         
         session['active_code'] = code # Set cookie
         return redirect(url_for('main.status_page', code=code))
         
     except Exception as e:
+        current_app.logger.exception("Error activating voucher %s", code)
         db.session.rollback()
         flash(f"Error activating voucher: {str(e)}", "error")
         return redirect(url_for('main.index'))
@@ -132,8 +144,36 @@ def activate():
 @bp.route('/status')
 def status_page():
     code = request.args.get('code')
+    # Disable query caching to ensure fresh data from database
     voucher = Voucher.query.filter_by(code=code).first_or_404()
-    return render_template('status.html', voucher=voucher)
+    db.session.expunge(voucher)  # Remove from session cache
+    voucher = Voucher.query.filter_by(code=code).first_or_404()  # Re-query fresh
+    return render_template('status.html', voucher=voucher, is_developer=voucher.is_developer)
+
+@bp.route('/end-session', methods=['POST'])
+def end_session():
+    """End the current session and clear the active code"""
+    code = request.form.get('code')
+    voucher = Voucher.query.filter_by(code=code).first()
+    
+    if voucher:
+        # Reset activation for developer codes only
+        if voucher.is_developer:
+            voucher.activated_at = None
+            voucher.expires_at = None
+            voucher.user_mac_address = None
+            db.session.commit()
+            current_app.logger.info("Developer session ended: code=%s", code)
+        else:
+            current_app.logger.warning("Attempted to end non-developer voucher: code=%s", code)
+    
+    # Clear session
+    session.pop('active_code', None)
+    session.pop('hotspot_mac', None)
+    session.pop('hotspot_ip', None)
+    session.pop('hotspot_link_orig', None)
+    
+    return redirect(url_for('main.index'))
 
 @bp.route('/api/status/<code_or_mac>')
 def api_status(code_or_mac):

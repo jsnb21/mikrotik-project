@@ -21,9 +21,8 @@ def get_mikrotik_api():
         port = int(os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true'
         
-        conn = RouterOsApiPool(host, username=username, password=password, 
-                              port=port, use_ssl=use_ssl, plaintext_login=True)
-        api = conn.get_conn()
+        api = RouterOsApiPool(host, username=username, password=password, 
+                             port=port, use_ssl=use_ssl, plaintext_login=True)
         return api
     except Exception as e:
         print(f"[MIKROTIK] Connection error: {str(e)}")
@@ -47,7 +46,7 @@ def get_mikrotik_system_stats():
 def mikrotik_allow_mac(mac_address, duration_seconds):
     """
     Allow a MAC address through MikroTik hotspot for specified duration.
-    Uses the routeros API to add to IP > Hotspot > Active.
+    Uses the routeros API to add to IP > Hotspot > User.
     """
     try:
         api = get_mikrotik_api()
@@ -55,21 +54,18 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
             print(f"[MIKROTIK] Failed to connect - allowing MAC {mac_address} locally")
             return True
         
-        # Add user to hotspot active list
-        path = api.path('ip', 'hotspot', 'active')
-        # Note: Adding to active list requires user to be already connected
-        # Instead, we'll use IP > Hotspot > User to add a permanent user
+        # Add user to hotspot users list (ip > hotspot > user)
+        # This creates a hotspot user that will be automatically authorized
+        path = api.path('ip', 'hotspot', 'user')
         
         response = path.add(
             server='default',
             name=mac_address,
             mac_address=mac_address,
-            limit_uptime=f"{duration_seconds}s",
-            uptime_limit=f"{duration_seconds}s"
+            limit_uptime=f"{duration_seconds}s"
         )
         
-        print(f"[MIKROTIK] Allowed MAC {mac_address} for {duration_seconds} seconds")
-        api.close()
+        print(f"[MIKROTIK] Allowed MAC {mac_address} for {duration_seconds} seconds - ID: {response}")
         return True
         
     except Exception as e:
@@ -113,7 +109,7 @@ def get_mikrotik_interface_traffic(interface_name="ether1"):
 
 def mikrotik_kick_mac(mac_address):
     """
-    Kick a user from MikroTik hotspot.
+    Kick a user from MikroTik hotspot by removing from active sessions.
     """
     try:
         api = get_mikrotik_api()
@@ -128,7 +124,6 @@ def mikrotik_kick_mac(mac_address):
             path.remove(session['.id'])
         
         print(f"[MIKROTIK] Kicked MAC {mac_address}")
-        api.close()
         return True
         
     except Exception as e:
