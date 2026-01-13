@@ -3,14 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<<<<<<< Updated upstream
-    <title>MikroTik Project</title>
-    <link rel="icon" href="{{ url_for('static', filename='img/logo.png') }}">
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-=======
     <title>HighSpeed Pisonet</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -132,8 +124,39 @@
         
         /* Block display */
         .block { display: block; }
+        
+        /* Additional utility classes */
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .rounded-lg { border-radius: 0.5rem; }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .p-6 { padding: 1.5rem; }
+        .mt-10 { margin-top: 2.5rem; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .text-sm { font-size: 0.875rem; }
+        .font-medium { font-weight: 500; }
+        .text-gray-700 { color: #374151; }
+        .text-gray-800 { color: #1f2937; }
+        .text-gray-500 { color: #6b7280; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .rounded-md { border-radius: 0.375rem; }
+        .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .border { border: 1px solid currentColor; }
+        .mt-1 { margin-top: 0.25rem; }
+        .block { display: block; }
+        .w-full { width: 100%; }
+        .opacity-90 { opacity: 0.9; }
+        .text-white { color: #ffffff; }
+        .font-bold { font-weight: 700; }
+        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .duration-200 { transition-duration: 200ms; }
+        .text-center { text-align: center; }
+        .mb-6 { margin-bottom: 1.5rem; }
+        .text-2xl { font-size: 1.5rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .inline-block { display: inline-block; }
     </style>
->>>>>>> Stashed changes
 </head>
 <body>
 
@@ -141,7 +164,7 @@
     <header class="bg-[#0b343d] text-[#ffd41d] p-4 shadow-md">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-xl font-bold flex items-center gap-2">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="h-8 w-auto"> 
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="h-6 w-auto"> 
                 MikroTik Project
             </h1>
             <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">Connected</span>

@@ -1,12 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
-<<<<<<< Updated upstream
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import login_required, current_user, login_user, logout_user
 from . import db, login_manager
 from .models import Voucher, Admin
-=======
-from . import db
-from .models import Voucher
->>>>>>> Stashed changes
 from .utils import mikrotik_allow_mac
 from datetime import datetime, timezone
 from sqlalchemy import func
@@ -58,18 +53,6 @@ def logout():
 
 @bp.route('/')
 def index():
-<<<<<<< Updated upstream
-    # Check if user has an active session in cookies
-    if 'active_code' in session:
-        code = session['active_code']
-        voucher = Voucher.query.filter_by(code=code).first()
-        if voucher and voucher.remaining_seconds > 0:
-            return redirect(url_for('main.status_page', code=code))
-        else:
-            # Clean up expired session
-            session.pop('active_code', None)
-            
-=======
     # Capture MikroTik hotspot parameters
     mac_address = request.args.get('mac', '') or request.form.get('mac', '')
     ip_address = request.args.get('ip', '') or request.form.get('ip', '')
@@ -83,29 +66,30 @@ def index():
     
     # If called from MikroTik hotspot, use hotspot template
     if mac_address:
-        return render_template('login.html', 
+        return render_template('voucher_login.html', 
                              mac_address=mac_address,
                              ip_address=ip_address,
                              link_orig=link_orig)
     
->>>>>>> Stashed changes
-    return render_template('index.html')
+    # Check if user has an active session in cookies
+    if 'active_code' in session:
+        code = session['active_code']
+        voucher = Voucher.query.filter_by(code=code).first()
+        if voucher and voucher.remaining_seconds > 0:
+            return redirect(url_for('main.status_page', code=code))
+        else:
+            # Clean up expired session
+            session.pop('active_code', None)
+    
+    return render_template('voucher_login.html')
 
 @bp.route('/activate', methods=['POST'])
 def activate():
     from flask import session
     code = request.form.get('voucher_code', '').strip().upper()
-<<<<<<< Updated upstream
-
-    # In a real app, getting MAC address from a web request is tricky if not behind the captive portal.
-    # The captive portal usually passes the MAC as a query param or header.
-    # For this demo, we'll assume it's passed or simulate it.
-    mac_address = request.form.get('mac_address') or '00:00:00:00:00:00' 
-=======
     
-    # Get MAC address from session (passed by MikroTik hotspot)
-    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00' 
->>>>>>> Stashed changes
+    # Get MAC address from session (passed by MikroTik hotspot), form, or use default
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00'
     
     # Basic rate limiting could go here (Redis/memcached) 
     
