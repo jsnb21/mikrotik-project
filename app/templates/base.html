@@ -10,9 +10,10 @@
         .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; width: 100%; }
         
         /* Header */
-        header { background: #2563eb; color: white; padding: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        header { background: #0b343d; color: #ffd41d; padding: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         header .flex { display: flex; justify-content: space-between; align-items: center; }
         header h1 { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+        header img { height: 2.5rem; width: auto; }
         .badge { background: #10b981; font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.5rem; border-radius: 9999px; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
         
@@ -161,13 +162,13 @@
 <body>
 
     <!-- Header -->
-    <header class="bg-[#0b343d] text-[#ffd41d] p-4 shadow-md">
+    <header>
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="h-6 w-auto"> 
+            <h1>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo"> 
                 MikroTik Project
             </h1>
-            <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">Connected</span>
+            <span class="badge">Connected</span>
         </div>
     </header>
 
