@@ -3,35 +3,19 @@
 {% block content %}
 <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 mt-10">
     <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">Internet Access</h2>
-        <p class="text-gray-500">Enter your voucher code to start.</p>
+        <h2 class="text-2xl font-bold text-gray-800">Welcome to WiFi Portal</h2>
+        <p class="text-gray-500">Please login via the captive portal.</p>
     </div>
 
-    <form action="{{ url_for('main.activate') }}" method="POST" class="space-y-4">
-        <div>
-            <label for="voucher_code" class="block text-sm font-medium text-gray-700">Voucher Code</label>
-            <input type="text" name="voucher_code" id="voucher_code" placeholder="A7X-99B" 
-                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 border p-3 text-center text-xl uppercase tracking-widest"
-                   required>
+    <div class="space-y-4">
+        <div class="p-4 bg-blue-50 text-blue-700 rounded-md text-center">
+            <p class="font-bold">Internet Access</p>
+            <p class="text-sm">You should be automatically redirected to the login page. If not, click below.</p>
         </div>
         
-        <!-- Simulation of MAC Address handling -->
-        <div class="text-xs text-gray-400 text-center">
-            Your Device ID: <span class="font-mono">AA:BB:CC:DD:EE:FF</span>
-            <input type="hidden" name="mac_address" value="AA:BB:CC:DD:EE:FF"> 
-        </div>
-
-        <button type="submit" class="w-full bg-[#0b343d] hover:opacity-90 text-white font-bold py-3 px-4 rounded transition duration-200">
-            Connect
-        </button>
-    </form>
-    
-    <div class="mt-6 text-center text-sm text-gray-500">
-        <p>Rates:</p>
-        <ul class="list-none">
-            <li>₱5.00 - 1 Hour</li>
-            <li>₱10.00 - 3 Hours</li>
-        </ul>
+        <a href="http://192.168.88.1" target="_blank" class="block w-full bg-[#0b343d] hover:opacity-90 text-white font-bold py-3 px-4 rounded transition duration-200 text-center">
+            Go to Login Portal
+        </a>
     </div>
 </div>
 {% endblock %}

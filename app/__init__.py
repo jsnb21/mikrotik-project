@@ -15,7 +15,7 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
 
     with app.app_context():
-        from .models import Voucher, Admin  # Import models so db.create_all() works
+        from .models import Admin  # Import models so db.create_all() works
         db.create_all()
 
     # Register Blueprint
