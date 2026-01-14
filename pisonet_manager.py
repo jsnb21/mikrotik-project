@@ -35,6 +35,51 @@ class IORedirector(object):
     def flush(self):
         self.original_stream.flush()
 
+class CustomMessageBox(ctk.CTkToplevel):
+    def __init__(self, title, message, type="info"):
+        super().__init__()
+        self.title(title)
+        
+        # Dimensions and Centering
+        width = 420
+        height = 220
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = int((screen_width/2) - (width/2))
+        y = int((screen_height/2) - (height/2))
+        self.geometry(f'{width}x{height}+{x}+{y}')
+        
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # Style based on type
+        if type == "error":
+            icon_char = "✕"
+            icon_color = "#d9534f" # Red
+        elif type == "success" or title.lower() == "success":
+            icon_char = "✓"
+            icon_color = "#5cb85c" # Green
+        else:
+            icon_char = "ℹ"
+            icon_color = "#5bc0de" # Blue
+
+        # Icon
+        self.lbl_icon = ctk.CTkLabel(self, text=icon_char, font=("Arial", 48), text_color=icon_color)
+        self.lbl_icon.pack(pady=(20, 5))
+
+        # Message
+        self.lbl_msg = ctk.CTkLabel(self, text=message, font=("Arial", 14), wraplength=380, text_color=("black", "white"))
+        self.lbl_msg.pack(pady=10, padx=20)
+
+        # OK Button
+        self.btn_ok = ctk.CTkButton(self, text="OK", command=self.destroy, width=100)
+        self.btn_ok.pack(pady=(0, 20))
+        
+        self.grab_set()
+        self.focus_force()
+
 class PisonetManager(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -127,6 +172,9 @@ class PisonetManager(ctk.CTk):
         
         self.status_label = ctk.CTkLabel(self.status_bar, text="Server Stopped", font=("Arial", 12))
         self.status_label.pack(side=tk.LEFT)
+
+        self.spinner_label = ctk.CTkLabel(self.status_bar, text="", font=("Courier New", 14, "bold"))
+        self.spinner_label.pack(side=tk.LEFT, padx=5)
         
         # Define Frames for each view
         self.frames = {}
@@ -165,6 +213,22 @@ class PisonetManager(ctk.CTk):
         # Refresh if needed
         if hasattr(frame, 'refresh'):
             frame.refresh()
+
+    def start_loading_animation(self):
+        self._is_loading = True
+        self._animate_spinner()
+
+    def stop_loading_animation(self):
+        self._is_loading = False
+        self.spinner_label.configure(text="")
+
+    def _animate_spinner(self):
+        if not self._is_loading: return
+        chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        if not hasattr(self, '_spinner_idx'): self._spinner_idx = 0
+        self.spinner_label.configure(text=chars[self._spinner_idx])
+        self._spinner_idx = (self._spinner_idx + 1) % len(chars)
+        self.after(80, self._animate_spinner)
 
     def draw_status_indicator(self, color):
         self.status_indicator.configure(text_color=color)
@@ -337,7 +401,7 @@ class GenerateView(ctk.CTkFrame):
             elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
             else: total_seconds = int(val_str) * 60 # Default mins
         except:
-            messagebox.showerror("Error", "Invalid validity format in profile.")
+            CustomMessageBox("Error", "Invalid validity format in profile.", "error")
             return
 
         qty = int(self.qty_var.get())
@@ -507,7 +571,7 @@ class HotspotView(ctk.CTkFrame):
                 self.refresh()
                 top.destroy()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to save profile: {e}")
+                CustomMessageBox("Error", f"Failed to save profile: {e}", "error")
                 print(e)
 
         ctk.CTkButton(top, text="Create", command=save, width=150).pack(pady=20)
@@ -515,8 +579,182 @@ class HotspotView(ctk.CTkFrame):
 class SettingsView(ctk.CTkFrame):
     def __init__(self, parent, controller):
         ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
+        self.controller = controller
+        
         ctk.CTkLabel(self, text="Settings", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
-        ctk.CTkLabel(self, text="Application Settings (Placeholder)", font=("Arial", 14)).pack(pady=20)
+        
+        # Router Configuration Frame
+        config_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        config_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ctk.CTkLabel(config_frame, text="MikroTik Router Configuration", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
+        
+        form_frame = ctk.CTkFrame(config_frame, fg_color="transparent")
+        form_frame.pack(fill=tk.X, padx=15, pady=(0, 15))
+
+        self.entries = {}
+        
+        self.create_entry(form_frame, "Router IP (Host):", "MIKROTIK_HOST", 0)
+        self.create_entry(form_frame, "API Port:", "MIKROTIK_PORT", 1)
+        self.create_entry(form_frame, "Username:", "MIKROTIK_USER", 2)
+        self.create_entry(form_frame, "Password:", "MIKROTIK_PASSWORD", 3, show="*")
+        self.create_entry(form_frame, "WAN Interface:", "MIKROTIK_WAN_INTERFACE", 4)
+        
+        # Buttons
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ctk.CTkButton(btn_frame, text="Test Connection", command=self.test_connection, 
+                      fg_color="#f0ad4e", hover_color="#ec971f", text_color="black").pack(side=tk.LEFT, padx=5)
+                      
+        ctk.CTkButton(btn_frame, text="Save Settings", command=self.save_settings,
+                      fg_color="#5cb85c", hover_color="#449d44").pack(side=tk.LEFT, padx=5)
+        
+        self.load_settings()
+
+    def create_entry(self, parent, label, key, row, show=None):
+        ctk.CTkLabel(parent, text=label, width=150, anchor="w").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+        entry = ctk.CTkEntry(parent, width=300)
+        if show: entry.configure(show=show)
+        entry.grid(row=row, column=1, padx=5, pady=5, sticky="w")
+        self.entries[key] = entry
+
+    def load_settings(self):
+        # Read .env file manually to populate fields
+        env_vars = {}
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                for line in f:
+                    if '=' in line and not line.strip().startswith('#'):
+                        try:
+                            key, value = line.strip().split('=', 1)
+                            env_vars[key] = value
+                        except ValueError: pass
+        
+        # Set defaults if missing
+        defaults = {
+            "MIKROTIK_HOST": "192.168.88.1",
+            "MIKROTIK_PORT": "8728",
+            "MIKROTIK_USER": "admin",
+            "MIKROTIK_PASSWORD": "",
+            "MIKROTIK_WAN_INTERFACE": "ether1"
+        }
+        
+        for key, entry in self.entries.items():
+            val = env_vars.get(key, defaults.get(key, ""))
+            # Handle MIKROTIK_USERNAME/USER confusion locally
+            if key == "MIKROTIK_USER" and "MIKROTIK_USER" not in env_vars and "MIKROTIK_USERNAME" in env_vars:
+                val = env_vars["MIKROTIK_USERNAME"]
+                
+            entry.delete(0, tk.END)
+            entry.insert(0, val)
+
+    def save_settings(self):
+        # Read current .env
+        lines = []
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                lines = f.readlines()
+        
+        new_values = {k: v.get() for k, v in self.entries.items()}
+        
+        updated_keys = set()
+        new_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            if '=' in line_stripped and not line_stripped.startswith('#'):
+                key = line_stripped.split('=')[0].strip()
+                if key in new_values:
+                    new_lines.append(f"{key}={new_values[key]}\n")
+                    updated_keys.add(key)
+                elif key == "MIKROTIK_USERNAME" and "MIKROTIK_USER" in new_values:
+                    # Update legacy USERNAME to USER value
+                    new_lines.append(f"MIKROTIK_USERNAME={new_values['MIKROTIK_USER']}\n")
+                    # Also ensure MIKROTIK_USER is added later if strictly needed, 
+                    # OR we can just update USERNAME and assume config.py might be changed to read USERNAME?
+                    # No, let's keep it simple. If USERNAME matches USER logic, treat them as linked.
+                    # But distinct keys:
+                    # Logic: If .env has USERNAME, update it. If it doesn't have USER, add it.
+                    updated_keys.add("MIKROTIK_USERNAME") # Mark as handled so we don't duplicate
+                else:
+                    new_lines.append(line)
+            else:
+                new_lines.append(line)
+        
+        # Append missing keys (like if MIKROTIK_USER was missing but we had USERNAME, we might want to add USER too to match config.py)
+        for key, val in new_values.items():
+            if key not in updated_keys:
+                new_lines.append(f"{key}={val}\n")
+                
+        try:
+            with open('.env', 'w') as f:
+                f.writelines(new_lines)
+            CustomMessageBox("Success", "Settings saved successfully! Please restart the server.")
+        except Exception as e:
+            CustomMessageBox("Error", f"Failed to save settings: {e}", "error")
+
+    def test_connection(self):
+        import routeros_api
+        import threading
+        
+        # Disable button to prevent multi-click
+        # Note: Ideally store reference to button to disable it, but for simplicity we rely on modal behavior
+        
+        host = self.entries["MIKROTIK_HOST"].get()
+        user = self.entries["MIKROTIK_USER"].get()
+        password = self.entries["MIKROTIK_PASSWORD"].get()
+        wan_iface = self.entries["MIKROTIK_WAN_INTERFACE"].get()
+        
+        try:
+            port = int(self.entries["MIKROTIK_PORT"].get())
+        except:
+            CustomMessageBox("Error", "Port must be a number.", "error")
+            return
+
+        # Update Status Bar
+        self.controller.status_label.configure(text="Testing Connection...")
+        self.controller.draw_status_indicator("orange")
+        self.controller.start_loading_animation()
+
+        def run_test():
+            try:
+                connection = routeros_api.RouterOsApiPool(host, username=user, password=password, port=port, plaintext_login=True)
+                api = connection.get_api()
+                identity = api.get_resource('/system/identity').get()
+                
+                # Check WAN interface
+                iface_exists = False
+                try:
+                    if api.get_resource('/interface').get(name=wan_iface): 
+                        iface_exists = True
+                except: pass
+                
+                connection.disconnect()
+                name = identity[0].get('name') if identity else 'Unknown'
+                
+                msg = f"Connected successfully!\nRouter Identity: {name}"
+                if iface_exists: msg += f"\nWAN Interface '{wan_iface}' found."
+                else: msg += f"\nWarning: WAN Interface '{wan_iface}' NOT found."
+                
+                self.after(0, lambda: CustomMessageBox("Success", msg))
+            except Exception as e:
+                err_msg = str(e)
+                self.after(0, lambda: CustomMessageBox("Connection Failed", f"Could not connect to router:\n{err_msg}", "error"))
+            finally:
+                # Restore status bar based on server state
+                def restore_status():
+                    self.controller.stop_loading_animation()
+                    if self.controller.is_server_running:
+                        self.controller.draw_status_indicator("#00FF00")
+                        self.controller.status_label.configure(text="Server Running: http://127.0.0.1:5000")
+                    else:
+                        self.controller.draw_status_indicator(("black", "gray"))
+                        self.controller.status_label.configure(text="Server Stopped")
+                self.after(0, restore_status)
+
+        # Run in thread to not freeze UI
+        threading.Thread(target=run_test, daemon=True).start()
 
 if __name__ == "__main__":
     app = PisonetManager()

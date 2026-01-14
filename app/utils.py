@@ -31,18 +31,51 @@ def get_mikrotik_api():
 
 def get_mikrotik_system_stats():
     """
-    Mock function to fetch system resource usage from MikroTik.
+    Fetch system resource usage from MikroTik.
     Returns: dict with cpu, memory, uptime, etc.
+    Fallback: Returns mock data if connection fails.
     """
-    # In production: api.get_resource()
-    return {
+    mock_data = {
         "cpu_load": 15,
         "free_memory": 45000000,
         "total_memory": 64000000,
-        "uptime": "2 weeks 4 days",
-        "board_name": "hAP ac^2",
-        "version": "6.48.6"
+        "uptime": "Offline (Mock)",
+        "board_name": "Unknown",
+        "version": "Unknown"
     }
+
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return mock_data
+
+    try:
+        api = api_pool.get_api()
+        resources = api.get_resource('/system/resource').get()
+        routerboard = api.get_resource('/system/routerboard').get()
+        
+        if resources:
+            res = resources[0]
+            # Try to get router model name
+            model = "MikroTik Router"
+            if routerboard:
+                model = routerboard[0].get('model', 'RouterBOARD')
+            
+            return {
+                "cpu_load": res.get('cpu-load', 0),
+                "free_memory": int(res.get('free-memory', 0)),
+                "total_memory": int(res.get('total-memory', 0)),
+                "uptime": res.get('uptime', '0s'),
+                "board_name": model,
+                "version": res.get('version', 'Unknown')
+            }
+    except Exception as e:
+        print(f"[MIKROTIK] Error fetching system stats: {e}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except: pass
+        
+    return mock_data
 
 def mikrotik_allow_mac(mac_address, duration_seconds):
     """Authorize a MAC for hotspot: create/update user and add bypass ip-binding."""
@@ -139,15 +172,42 @@ def get_mac_from_active_session(client_ip):
 
 def get_mikrotik_active_hotspot_users():
     """
-    Mock function to fetch active hotspot users.
-    Returns: list of dicts
+    Fetch active hotspot users from MikroTik.
+    Returns: list of dicts.
+    Fallback: Returns mock data if connection fails.
     """
-    # In production: api.path('ip', 'hotspot', 'active').get()
-    return [
-        {"user": "user1", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
-        {"user": "user2", "mac": "AA:BB:CC:DD:EE:FF", "uptime": "45m", "bytes_in": 204800, "bytes_out": 100000, "time_left": "2h 15m"},
-        {"user": "user3", "mac": "11:22:33:44:55:66", "uptime": "5m", "bytes_in": 5000, "bytes_out": 2000, "time_left": "55m"}
+    mock_data = [
+        {"user": "user1 (mock)", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
     ]
+
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return mock_data
+
+    try:
+        api = api_pool.get_api()
+        active = api.get_resource('/ip/hotspot/active').get()
+        users_list = []
+        
+        for idx, session in enumerate(active):
+            if idx >= 10: break # Limit to 10
+            users_list.append({
+                "user": session.get('user', 'Unknown'),
+                "mac": session.get('mac-address', ''),
+                "uptime": session.get('uptime', '0s'),
+                "bytes_in": int(session.get('bytes-in', 0)),
+                "bytes_out": int(session.get('bytes-out', 0)),
+                "time_left": session.get('session-time-left', 'Unknown')
+            })
+        return users_list
+    except Exception as e:
+        print(f"[MIKROTIK] Error fetching active users: {e}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except: pass
+        
+    return mock_data
 
 def get_income_stats():
     """
@@ -165,16 +225,47 @@ def get_income_stats():
         "labels_monthly": ["Jan", "Feb", "Mar", "Apr", "May"]
     }
 
-def get_mikrotik_interface_traffic(interface_name="ether1"):
+def get_mikrotik_interface_traffic(interface_name=None):
     """
-    Mock function to get current traffic on an interface.
+    Get current traffic on an interface.
+    Fallback: Returns random mock data if connection fails.
     """
-    # In production: api.path('interface', 'monitor-traffic').get(...)
     import random
-    return {
-        "rx_bps": random.randint(1000, 10000000),
-        "tx_bps": random.randint(1000, 5000000)
+    mock_data = {
+        "rx_bps": random.randint(1000, 1000000),
+        "tx_bps": random.randint(1000, 500000)
     }
+
+    if not interface_name:
+        interface_name = os.getenv('MIKROTIK_WAN_INTERFACE', 'ether1')
+
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return mock_data
+
+    try:
+        api = api_pool.get_api()
+        # Using monitor-traffic command
+        # Syntax: /interface monitor-traffic [find name=ether1] once
+        traffic = api.get_resource('/interface').call('monitor-traffic', {
+            'interface': interface_name,
+            'once': 'true'
+        })
+        
+        if traffic:
+            t = traffic[0]
+            return {
+                "rx_bps": int(t.get('rx-bits-per-second', 0)),
+                "tx_bps": int(t.get('tx-bits-per-second', 0))
+            }
+    except Exception as e:
+        print(f"[MIKROTIK] Error fetching traffic for {interface_name}: {e}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except: pass
+        
+    return mock_data
 
 def mikrotik_kick_mac(mac_address):
     """Remove an active hotspot session for a MAC."""
