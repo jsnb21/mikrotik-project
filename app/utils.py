@@ -1,5 +1,6 @@
 # app/utils.py
 import os
+import socket
 
 # Try to import routeros_api, but make it optional
 try:
@@ -22,6 +23,15 @@ def get_mikrotik_api():
         port = int(os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true'
         
+        # Fast Connectivity Check (0.3 second timeout)
+        # This prevents hanging for long periods if the router is offline.
+        try:
+             sock = socket.create_connection((host, port), timeout=0.3)
+             sock.close()
+        except (socket.timeout, ConnectionRefusedError, OSError):
+             print(f"[DEBUG] Fast Check: {host}:{port} unreachable/slow. Skipping API connection.")
+             return None
+
         # Strip whitespace from credentials (common .env issue)
         username = username.strip()
         password = password.strip()
@@ -48,17 +58,22 @@ def get_mikrotik_api():
         
         for attempt_name, attempt_port, attempt_ssl, plaintext in connection_attempts:
             try:
-                print(f"[DEBUG] Trying connection method: {attempt_name}")
+                # print(f"[DEBUG] Trying connection method: {attempt_name}") 
+                # Note: RouterOsApiPool constructor doesn't connect yet, so we don't print Success here.
+                
                 if plaintext:
-                    api = RouterOsApiPool(host, username=username, password=password, 
+                    pool = RouterOsApiPool(host, username=username, password=password, 
                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
                 else:
-                    api = RouterOsApiPool(host, username=username, password=password, 
+                    pool = RouterOsApiPool(host, username=username, password=password, 
                                          port=attempt_port, use_ssl=attempt_ssl)
-                print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
-                return api
+                
+                # Test the connection immediately with a short timeout if possible, 
+                # but since we can't easily set timeout on the lib, knowing the port is open is our best bet.
+                print(f"[DEBUG] Pool created for: {attempt_name}")
+                return pool
             except Exception as e:
-                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:100]}")
+                print(f"[DEBUG] ✗ Failed to create pool {attempt_name}: {str(e)[:100]}")
                 continue
         
         raise Exception("All connection attempts failed")
@@ -66,7 +81,7 @@ def get_mikrotik_api():
         print(f"[MIKROTIK] Connection error: {str(e)}")
         return None
 
-def get_mikrotik_system_stats():
+def get_mikrotik_system_stats(api=None):
     """
     Fetch system resource usage from MikroTik.
     Returns: dict with cpu, memory, uptime, etc.
@@ -81,12 +96,23 @@ def get_mikrotik_system_stats():
         "version": "Unknown"
     }
 
-    api_pool = get_mikrotik_api()
-    if not api_pool:
+    if api is False:
         return mock_data
 
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            print(f"[MIKROTIK] Error getting API from pool: {e}")
+            try: pool.disconnect()
+            except: pass
+            return mock_data
+
     try:
-        api = api_pool.get_api()
         resources = api.get_resource('/system/resource').get()
         routerboard = api.get_resource('/system/routerboard').get()
         
@@ -108,9 +134,10 @@ def get_mikrotik_system_stats():
     except Exception as e:
         print(f"[MIKROTIK] Error fetching system stats: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        if pool:
+            try:
+                pool.disconnect()
+            except: pass
         
     return mock_data
 
@@ -207,7 +234,7 @@ def get_mac_from_active_session(client_ip):
     
     return None
 
-def get_mikrotik_active_hotspot_users():
+def get_mikrotik_active_hotspot_users(api=None):
     """
     Fetch active hotspot users from MikroTik.
     Returns: list of dicts.
@@ -217,12 +244,22 @@ def get_mikrotik_active_hotspot_users():
         {"user": "user1 (mock)", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
     ]
 
-    api_pool = get_mikrotik_api()
-    if not api_pool:
+    if api is False:
         return mock_data
 
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            try: pool.disconnect()
+            except: pass
+            return mock_data
+
     try:
-        api = api_pool.get_api()
         active = api.get_resource('/ip/hotspot/active').get()
         users_list = []
         
@@ -240,9 +277,10 @@ def get_mikrotik_active_hotspot_users():
     except Exception as e:
         print(f"[MIKROTIK] Error fetching active users: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        if pool:
+            try:
+                pool.disconnect()
+            except: pass
         
     return mock_data
 
@@ -262,7 +300,7 @@ def get_income_stats():
         "labels_monthly": ["Jan", "Feb", "Mar", "Apr", "May"]
     }
 
-def get_mikrotik_interface_traffic(interface_name=None):
+def get_mikrotik_interface_traffic(interface_name=None, api=None):
     """
     Get current traffic on an interface.
     Fallback: Returns random mock data if connection fails.
@@ -273,15 +311,25 @@ def get_mikrotik_interface_traffic(interface_name=None):
         "tx_bps": random.randint(1000, 500000)
     }
 
+    if api is False:
+        return mock_data
+
     if not interface_name:
         interface_name = os.getenv('MIKROTIK_WAN_INTERFACE', 'ether1')
 
-    api_pool = get_mikrotik_api()
-    if not api_pool:
-        return mock_data
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            try: pool.disconnect()
+            except: pass
+            return mock_data
 
     try:
-        api = api_pool.get_api()
         # Using monitor-traffic command
         # Syntax: /interface monitor-traffic [find name=ether1] once
         traffic = api.get_resource('/interface').call('monitor-traffic', {
@@ -298,9 +346,10 @@ def get_mikrotik_interface_traffic(interface_name=None):
     except Exception as e:
         print(f"[MIKROTIK] Error fetching traffic for {interface_name}: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        if pool:
+            try:
+                pool.disconnect()
+            except: pass
         
     return mock_data
 

@@ -256,12 +256,47 @@ def api_status(code_or_mac):
 @bp.route('/admin')
 @login_required
 def admin_dashboard():
-    # Fetch Analytics from MikroTik
-    system_stats = get_mikrotik_system_stats()
-    active_users = get_mikrotik_active_hotspot_users()
-    traffic = get_mikrotik_interface_traffic()
-    income_stats = get_income_stats()
+    from .utils import get_mikrotik_api, get_mikrotik_system_stats, get_mikrotik_active_hotspot_users, get_mikrotik_interface_traffic, get_income_stats
+
+    # Fetch Analytics from MikroTik using a SINGLE connection
+    system_stats = None
+    active_users = None
+    traffic = None
+    income_stats = get_income_stats() # Mock data, no connection needed
     
+    # Create single connection pool
+    pool = get_mikrotik_api()
+    
+    if pool:
+        try:
+            api = pool.get_api()
+            # Pass the open API instance to helper functions
+            system_stats = get_mikrotik_system_stats(api=api)
+            active_users = get_mikrotik_active_hotspot_users(api=api)
+            traffic = get_mikrotik_interface_traffic(api=api)
+        except Exception as e:
+            print(f"Dashboard data fetch error: {e}")
+        finally:
+            pool.disconnect()
+    
+    # Fallback if connection failed or partly failed (helpers return mock/empty on error if no api passed, 
+    # but here we passed api, they might return mock if exception caught inside them. 
+    # If pool setup failed, they will initiate their own connections if we called them without args, 
+    # but we want to avoid that latency. So we handle the fallback here if everything failed.)
+    
+    # Fallback if specific data is missing (helpers return mock data on failure)
+    # We purposefully call them without args here ONLY if the main connection failed completely,
+    # so they can return their mock data (or try to connect individually if you really wanted that, but checking 'if system_stats is None' implies the initial fetch failed).
+    # Actually, the helpers return mock data if `api` passed is bad? No, they use the passed api. 
+    # If we pass an API and it fails inside, they catch exception and return None? 
+    # Let's check the utils implementation again.
+    # get_mikrotik_system_stats returns mock_data on exception.
+    # So system_stats will rarely be None unless something very weird happens.
+    
+    if system_stats is None: system_stats = get_mikrotik_system_stats(api=None) 
+    if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=None)
+    if traffic is None: traffic = get_mikrotik_interface_traffic(api=None)
+
     admins = Admin.query.all()
 
     return render_template('admin.html', 
