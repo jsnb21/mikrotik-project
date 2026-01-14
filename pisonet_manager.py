@@ -57,13 +57,13 @@ class CustomMessageBox(ctk.CTkToplevel):
         # Style based on type
         if type == "error":
             icon_char = "✕"
-            icon_color = "#d9534f" # Red
+            icon_color = "#ff5f52" # Coral Red
         elif type == "success" or title.lower() == "success":
             icon_char = "✓"
-            icon_color = "#5cb85c" # Green
+            icon_color = "#ffd41d" # Vibrant Yellow
         else:
             icon_char = "ℹ"
-            icon_color = "#5bc0de" # Blue
+            icon_color = "#4b7178" # Muted Blue-Grey
 
         # Icon
         self.lbl_icon = ctk.CTkLabel(self, text=icon_char, font=("Arial", 48), text_color=icon_color)
@@ -74,11 +74,38 @@ class CustomMessageBox(ctk.CTkToplevel):
         self.lbl_msg.pack(pady=10, padx=20)
 
         # OK Button
-        self.btn_ok = ctk.CTkButton(self, text="OK", command=self.destroy, width=100)
+        self.btn_ok = ctk.CTkButton(self, text="OK", command=self.destroy, width=100, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 14, "bold"))
         self.btn_ok.pack(pady=(0, 20))
         
         self.grab_set()
         self.focus_force()
+
+class ToolTip(object):
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        self.widget.bind("<Enter>", self.show_tip)
+        self.widget.bind("<Leave>", self.hide_tip)
+
+    def show_tip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        self.tip_window = tk.Toplevel(self.widget)
+        self.tip_window.wm_overrideredirect(True)
+        self.tip_window.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(self.tip_window, text=self.text, justify=tk.LEFT,
+                       background="#333333", foreground="white",
+                       relief=tk.SOLID, borderwidth=0, font=("Arial", 10))
+        label.pack(ipadx=5, ipady=2)
+
+    def hide_tip(self, event=None):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
 
 class PisonetManager(ctk.CTk):
     def __init__(self):
@@ -126,8 +153,10 @@ class PisonetManager(ctk.CTk):
             try:
                 msg = self.log_queue.get_nowait()
                 if "DashboardView" in self.frames:
+                    self.frames["DashboardView"].log_area.configure(state="normal")
                     self.frames["DashboardView"].log_area.insert("end", msg)
                     self.frames["DashboardView"].log_area.see("end")
+                    self.frames["DashboardView"].log_area.configure(state="disabled")
             except:
                 pass
         self.after(100, self.update_log_display)
@@ -175,6 +204,9 @@ class PisonetManager(ctk.CTk):
 
         self.spinner_label = ctk.CTkLabel(self.status_bar, text="", font=("Courier New", 14, "bold"))
         self.spinner_label.pack(side=tk.LEFT, padx=5)
+
+        self.notification_label = ctk.CTkLabel(self.status_bar, text="", font=("Arial", 12), text_color="#ffd41d")
+        self.notification_label.pack(side=tk.RIGHT, padx=20)
         
         # Define Frames for each view
         self.frames = {}
@@ -187,11 +219,45 @@ class PisonetManager(ctk.CTk):
         self.show_dashboard()
 
     def create_sidebar_btn(self, text, command):
-        btn = ctk.CTkButton(self.sidebar_frame, text=text, command=command, 
-                        fg_color="transparent", hover_color="#2E3B55",
-                        font=("Arial", 14), anchor="w", height=40)
-        btn.pack(fill=tk.X, pady=2, padx=10)
-        self.nav_buttons[text] = btn
+        icon_map = {
+            "Dashboard": "🏠",
+            "Generate": "🎫",
+            "Hotspot": "📡",
+            "Settings": "⚙"
+        }
+        icon = icon_map.get(text, "●")
+        
+        # Container Frame (Simulates Button)
+        btn_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent", height=40, corner_radius=6)
+        btn_frame.pack(fill=tk.X, pady=2, padx=10)
+        btn_frame.pack_propagate(False)
+
+        # Event Handlers
+        def on_click(e): command()
+        
+        def on_enter(e):
+            if getattr(self, "active_btn_name", "") != text:
+                btn_frame.configure(fg_color="#2E3B55")
+
+        def on_leave(e):
+            if getattr(self, "active_btn_name", "") != text:
+                btn_frame.configure(fg_color="transparent")
+
+        # Icon Label (Normal Font)
+        icon_lbl = ctk.CTkLabel(btn_frame, text=icon, font=("Arial", 20), width=40)
+        icon_lbl.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Text Label (Bold Font)
+        text_lbl = ctk.CTkLabel(btn_frame, text=text, font=("Arial", 14, "bold"), anchor="w")
+        text_lbl.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Bind events
+        for w in (btn_frame, icon_lbl, text_lbl):
+            w.bind("<Button-1>", on_click)
+            w.bind("<Enter>", on_enter)
+            w.bind("<Leave>", on_leave)
+
+        self.nav_buttons[text] = btn_frame
 
     def show_dashboard(self): self.show_frame("DashboardView")
     def show_generate(self): self.show_frame("GenerateView")
@@ -204,6 +270,7 @@ class PisonetManager(ctk.CTk):
         
         # Highlight active button
         active_btn_name = page_name.replace("View", "")
+        self.active_btn_name = active_btn_name
         for name, btn in self.nav_buttons.items():
             if name == active_btn_name:
                 btn.configure(fg_color="#4a5a7d") # Active color
@@ -221,6 +288,10 @@ class PisonetManager(ctk.CTk):
     def stop_loading_animation(self):
         self._is_loading = False
         self.spinner_label.configure(text="")
+
+    def show_notification(self, text, duration=2000):
+        self.notification_label.configure(text=text)
+        self.after(duration, lambda: self.notification_label.configure(text=""))
 
     def _animate_spinner(self):
         if not self._is_loading: return
@@ -321,13 +392,17 @@ class DashboardView(ctk.CTkFrame):
         btns_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
         btns_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        self.btn_start = ctk.CTkButton(btns_frame, text="Start Server", command=controller.start_server)
+        self.btn_start = ctk.CTkButton(btns_frame, text="Start Server", command=controller.start_server, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", text_color_disabled="#3d3300", font=("Arial", 12, "bold"))
         self.btn_start.pack(side=tk.LEFT, padx=5)
 
-        self.btn_stop = ctk.CTkButton(btns_frame, text="Stop Server", command=controller.stop_server, state="disabled", fg_color="#d9534f", hover_color="#c9302c")
+        self.btn_stop = ctk.CTkButton(btns_frame, text="Stop Server", command=controller.stop_server, state="disabled", fg_color="#ff5f52", hover_color="#e65549", text_color="white", text_color_disabled="#dcdcdc", font=("Arial", 12, "bold"))
         self.btn_stop.pack(side=tk.LEFT, padx=5)
 
-        ctk.CTkButton(btns_frame, text="Launch Web Admin", command=lambda: webbrowser.open("http://127.0.0.1:5000/admin"), fg_color="#5bc0de", hover_color="#31b0d5").pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(btns_frame, text="Launch Web Admin", command=self.launch_admin, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
+
+        self.btn_copy = ctk.CTkButton(btns_frame, text="📋", width=40, command=self.copy_link, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 16))
+        self.btn_copy.pack(side=tk.LEFT, padx=5)
+        ToolTip(self.btn_copy, "Copy Link to Clipboard")
 
         # Logs
         log_label_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
@@ -339,6 +414,19 @@ class DashboardView(ctk.CTkFrame):
         self.log_area = ctk.CTkTextbox(log_label_frame, height=200)
         self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         self.log_area.insert("0.0", "Ready...\n")
+        self.log_area.configure(state="disabled")
+
+    def copy_link(self):
+        self.controller.clipboard_clear()
+        self.controller.clipboard_append("http://127.0.0.1:5000/admin")
+        self.controller.update() # Required to finalize clipboard
+        self.controller.show_notification("Link has been copied!")
+
+    def launch_admin(self):
+        if self.controller.is_server_running:
+            webbrowser.open("http://127.0.0.1:5000/admin")
+        else:
+            CustomMessageBox("Server Not Running", "Please start the server before launching the web admin.", "error")
 
 class GenerateView(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -367,7 +455,7 @@ class GenerateView(ctk.CTkFrame):
         # Spinbox does not exist in CTK yet, using Entry or option menu. Basic entry for now.
         ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=1, column=1, sticky="w", padx=10)
 
-        ctk.CTkButton(form_frame, text="Generate", command=self.generate).grid(row=2, column=1, padx=10, pady=15, sticky="e")
+        ctk.CTkButton(form_frame, text="Generate", command=self.generate, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).grid(row=2, column=1, padx=10, pady=15, sticky="e")
 
         # Result
         self.result_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
@@ -377,6 +465,7 @@ class GenerateView(ctk.CTkFrame):
         
         self.result_text = ctk.CTkTextbox(self.result_frame)
         self.result_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.result_text.configure(state="disabled")
 
     def refresh(self):
         # Update profiles dropdown
@@ -418,8 +507,10 @@ class GenerateView(ctk.CTkFrame):
                 codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
             db.session.commit()
 
+        self.result_text.configure(state="normal")
         self.result_text.insert(tk.END, f"--- NEW BATCH ({datetime.now().strftime('%H:%M:%S')}) ---\n")
         self.result_text.insert(tk.END, "\n".join(codes) + "\n\n")
+        self.result_text.configure(state="disabled")
 
 
 class HotspotView(ctk.CTkFrame):
@@ -441,7 +532,7 @@ class HotspotView(ctk.CTkFrame):
         # Tools
         toolbar = ctk.CTkFrame(self.tab_users, fg_color="transparent")
         toolbar.pack(fill=tk.X, pady=(0, 10))
-        ctk.CTkButton(toolbar, text="Refresh", command=self.load_users, width=100).pack(side=tk.LEFT)
+        ctk.CTkButton(toolbar, text="Refresh", command=self.load_users, width=100, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
 
         # Treeview Container (for scrollbar)
         tree_frame = ctk.CTkFrame(self.tab_users)
@@ -490,7 +581,7 @@ class HotspotView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self.tab_profiles, fg_color="transparent")
         toolbar.pack(fill=tk.X, pady=(0, 10))
         
-        ctk.CTkButton(toolbar, text="+ New Profile", command=self.open_add_profile, width=120).pack(side=tk.LEFT)
+        ctk.CTkButton(toolbar, text="+ New Profile", command=self.open_add_profile, width=120, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         
         # Treeview Container
         tree_frame = ctk.CTkFrame(self.tab_profiles)
@@ -574,7 +665,7 @@ class HotspotView(ctk.CTkFrame):
                 CustomMessageBox("Error", f"Failed to save profile: {e}", "error")
                 print(e)
 
-        ctk.CTkButton(top, text="Create", command=save, width=150).pack(pady=20)
+        ctk.CTkButton(top, text="Create", command=save, width=150, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(pady=20)
 
 class SettingsView(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -605,10 +696,10 @@ class SettingsView(ctk.CTkFrame):
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkButton(btn_frame, text="Test Connection", command=self.test_connection, 
-                      fg_color="#f0ad4e", hover_color="#ec971f", text_color="black").pack(side=tk.LEFT, padx=5)
+                      fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
                       
         ctk.CTkButton(btn_frame, text="Save Settings", command=self.save_settings,
-                      fg_color="#5cb85c", hover_color="#449d44").pack(side=tk.LEFT, padx=5)
+                      fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
         
         self.load_settings()
 
