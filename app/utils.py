@@ -115,67 +115,74 @@ def get_mikrotik_system_stats():
     return mock_data
 
 def mikrotik_allow_mac(mac_address, duration_seconds):
-    """Authorize a MAC for hotspot: create/update user and add bypass ip-binding."""
+    """Authorize a MAC for hotspot: use IP binding with bypassed type for immediate access."""
     api_pool = get_mikrotik_api()
     if not api_pool:
         print(f"[MIKROTIK] Failed to connect - allowing MAC {mac_address} locally")
         return True
 
-    hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER')  # Optional server name
+    hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER', 'hotspot1')
 
     try:
         api = api_pool.get_api()
-        users = api.get_resource('/ip/hotspot/user')
         ip_bindings = api.get_resource('/ip/hotspot/ip-binding')
 
-        # Build payload for hotspot user
-        payload = {
-            'name': mac_address,
-            'mac-address': mac_address,
-            'limit-uptime': f"{duration_seconds}s",
-        }
-        if hotspot_server:
-            payload['server'] = hotspot_server
-
-        try:
-            response = users.add(**payload)
-            print(f"[MIKROTIK] Allowed MAC {mac_address} for {duration_seconds} seconds - ID: {response}")
-        except Exception as e:
-            msg = str(e)
-            if 'already have user with this name' in msg:
-                # Update existing user instead of failing
-                existing = users.get(name=mac_address)
-                if existing and isinstance(existing, list) and '.id' in existing[0]:
-                    user_id = existing[0]['.id']
-                    update_payload = {'limit-uptime': f"{duration_seconds}s"}
-                    if hotspot_server:
-                        update_payload['server'] = hotspot_server
-                    users.set(id=user_id, **update_payload)
-                    print(f"[MIKROTIK] Updated existing user {mac_address} with new uptime {duration_seconds}s")
-                else:
-                    print(f"[MIKROTIK] User exists but could not fetch id for update: {existing}")
-            else:
-                raise
-
-        # Ensure IP binding bypass so the portal does not prompt again
+        # Use IP binding with 'bypassed' type for immediate access
+        # Note: Time limit enforcement must be handled by the application
+        # since 'bypassed' bindings don't respect hotspot time limits
         try:
             binding = ip_bindings.get(**{'mac-address': mac_address})
             if binding and isinstance(binding, list) and binding:
-                binding_id = binding[0].get('.id')
+                binding_id = binding[0].get('id') or binding[0].get('.id')
                 if binding_id:
-                    ip_bindings.set(id=binding_id, **{'type': 'bypassed'})
+                    ip_bindings.set(id=binding_id, **{'type': 'bypassed', 'server': hotspot_server})
+                    print(f"[MIKROTIK] Updated binding for MAC {mac_address} to bypassed")
                 else:
-                    print(f"[MIKROTIK] Warning: binding record missing .id: {binding[0]}")
+                    print(f"[MIKROTIK] Warning: binding record missing id: {binding[0]}")
             else:
-                ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed'})
-            print(f"[MIKROTIK] Added/updated bypass binding for MAC {mac_address}")
+                ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed', 'server': hotspot_server})
+                print(f"[MIKROTIK] Added bypassed binding for MAC {mac_address}")
         except Exception as e:
-            print(f"[MIKROTIK] Warning: ip-binding bypass failed for {mac_address}: {str(e)}")
+            print(f"[MIKROTIK] Error setting up IP binding: {str(e)}")
 
         return True
     except Exception as e:
         print(f"[MIKROTIK] Error allowing MAC {mac_address}: {str(e)}")
         return True  # Don't fail if API is down
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+
+def mikrotik_revoke_mac(mac_address):
+    """Revoke access for a MAC address by removing IP binding."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        print(f"[MIKROTIK] Failed to connect - cannot revoke MAC {mac_address}")
+        return False
+
+    try:
+        api = api_pool.get_api()
+        ip_bindings = api.get_resource('/ip/hotspot/ip-binding')
+
+        # Remove IP binding to revoke access
+        try:
+            binding = ip_bindings.get(**{'mac-address': mac_address})
+            if binding and isinstance(binding, list) and binding:
+                binding_id = binding[0].get('id') or binding[0].get('.id')
+                if binding_id:
+                    ip_bindings.remove(id=binding_id)
+                    print(f"[MIKROTIK] Revoked access for MAC {mac_address}")
+                    return True
+            print(f"[MIKROTIK] No binding found for MAC {mac_address}")
+            return False
+        except Exception as e:
+            print(f"[MIKROTIK] Error revoking MAC {mac_address}: {str(e)}")
+            return False
+    except Exception as e:
+        print(f"[MIKROTIK] Error connecting to revoke MAC {mac_address}: {str(e)}")
+        return False
     finally:
         try:
             api_pool.disconnect()
