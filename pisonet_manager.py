@@ -52,19 +52,17 @@ class PisonetManager(ctk.CTk):
             pass
 
         # App State
+        self.flask_app = create_app()
         self.flask_thread = None
         self.server = None
         self.is_server_running = False
-        self.flask_app = create_app()
         self.profiles_file = 'profiles.json'
         
         # Configure Colors
         self.sidebar_color = "#0b343d"
         
         # Logging Setup
-        self.log_queue = queue.Queue()
-        sys.stdout = IORedirector(self.log_queue, sys.stdout)
-        sys.stderr = IORedirector(self.log_queue, sys.stderr)
+        self.setup_logging()
 
         # Initialize UI
         self.setup_ui()
@@ -72,6 +70,11 @@ class PisonetManager(ctk.CTk):
         
         # Start logging loop
         self.update_log_display()
+
+    def setup_logging(self):
+        self.log_queue = queue.Queue()
+        sys.stdout = IORedirector(self.log_queue, sys.stdout)
+        sys.stderr = IORedirector(self.log_queue, sys.stderr)
 
     def update_log_display(self):
         while not self.log_queue.empty():
@@ -189,8 +192,11 @@ class PisonetManager(ctk.CTk):
         except Exception as e:
             print(f"Error saving profiles: {e}")
 
+
     def start_server(self):
-        if self.is_server_running: return
+        if self.is_server_running:
+            self.stop_server()
+            return
 
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting server...")
 
