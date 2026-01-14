@@ -132,7 +132,13 @@ def activate():
     current_app.logger.info("Activate attempt: code=%s, form_keys=%s, session_has_hotspot=%s", code, list(request.form.keys()), 'hotspot_mac' in session)
 
     # Get MAC address from session (passed by MikroTik hotspot), form, or use default
-    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00'
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
+    
+    # Ensure MAC is persisted in session so we stay in "hotspot mode" on redirect
+    if mac_address:
+         session['hotspot_mac'] = mac_address
+    else:
+         mac_address = '00:00:00:00:00:00'
     
     # Basic rate limiting could go here (Redis/memcached) 
     
@@ -140,8 +146,13 @@ def activate():
     
     if not voucher:
         current_app.logger.warning("Activate failed: voucher not found code=%s", code)
-        flash("Invalid Voucher Code", "error")
-        return redirect(url_for('main.index'))
+        flash("Invalid/Expired Voucher Code", "error")
+        # Ensure mac_address is available for the template
+        mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
+        return render_template('voucher_login.html', 
+                             mac_address=mac_address,
+                             ip_address=session.get('hotspot_ip'),
+                             link_orig=session.get('hotspot_link_orig'))
         
     if voucher.is_activated:
         current_app.logger.info("Voucher already activated: code=%s, mac=%s, remaining=%s", code, voucher.user_mac_address, voucher.remaining_seconds)
@@ -151,7 +162,12 @@ def activate():
              return redirect(url_for('main.status_page', code=code))
         
         flash("Voucher already used or expired", "error")
-        return redirect(url_for('main.index'))
+        # Ensure mac_address is available for the template
+        mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
+        return render_template('voucher_login.html', 
+                             mac_address=mac_address,
+                             ip_address=session.get('hotspot_ip'),
+                             link_orig=session.get('hotspot_link_orig'))
 
     try:
         # Activate Session Logic
