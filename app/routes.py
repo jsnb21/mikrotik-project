@@ -21,13 +21,14 @@ def load_user(user_id):
     return Admin.query.get(int(user_id))
 
 def create_default_admin():
-    if not Admin.query.filter_by(username='jsnb').first():
-        temp_password = 'temp_password_123' # Temporary password
-        admin = Admin(username='jsnb')
-        admin.set_password(temp_password)
+    # Check for requested default admin
+    if not Admin.query.filter_by(username='admin').first():
+        default_password = 'admin123' 
+        admin = Admin(username='admin')
+        admin.set_password(default_password)
         db.session.add(admin)
         db.session.commit()
-        print(f"Default admin 'jsnb' created with password: {temp_password}")
+        print(f"Default admin 'admin' created with password: {default_password}")
 
 
 @bp.route('/login', methods=['GET', 'POST'])
@@ -42,12 +43,19 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
+        print(f"Login attempt: username={username}")
         user = Admin.query.filter_by(username=username).first()
+        print(f"User found: {user}")
         
         if user and user.check_password(password):
+            print("Password check passed")
             login_user(user)
             return redirect(url_for('main.admin_dashboard'))
         else:
+            if user:
+                print("Password check failed")
+            else:
+                print("User not found")
             flash('Invalid username or password', 'error')
             
     return render_template('login.html')
@@ -106,6 +114,14 @@ def index():
                              link_orig=link_orig)
     
     return render_template('index.html')
+
+@bp.route('/design')
+def design_view():
+    """Route for designing the login page without a physical MikroTik router"""
+    return render_template('voucher_login.html', 
+                         mac_address="00:11:22:33:44:55",
+                         ip_address="192.168.88.254",
+                         link_orig="http://www.google.com")
 
 @bp.route('/activate', methods=['POST'])
 def activate():

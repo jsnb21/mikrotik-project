@@ -1,46 +1,62 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center p-6 bg-gray-50">
-  <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-6">
-    <h2 class="text-2xl font-bold mb-2">Connection Status</h2>
-
-    <div class="mb-4">
-      <p class="text-sm text-gray-600">Voucher Code</p>
-      <p class="text-xl font-mono font-semibold">{{ voucher.code }}</p>
-      {% if is_developer %}
-      <p class="text-xs text-blue-600 font-semibold">🔧 Developer Code</p>
-      {% endif %}
+<div class="flex items-center justify-center p-4" style="min-height: 85vh;">
+  <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <!-- Status Header -->
+    <div class="p-8 text-center" style="background: linear-gradient(135deg, #0b343d 0%, #154a54 100%);">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#ffd41d] text-[#0b343d] mb-4">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-3xl font-black text-white uppercase tracking-tight">CONNECTED</h2>
+        <p class="text-gray-400 font-medium">Internet Access Active</p>
     </div>
 
-    <div class="mb-4">
-      <p class="text-sm text-gray-600">Remaining Time</p>
-      {% if is_developer %}
-      <p class="text-2xl font-bold text-blue-600">∞ Unlimited</p>
-      {% else %}
-      <p id="countdown" class="text-2xl font-bold text-green-600">calculating...</p>
-      <p id="expiry" class="text-xs text-gray-500 mt-1">Expires: {{ voucher.expires_at or '—' }}</p>
-      {% endif %}
-    </div>
+    <div class="p-8">
+        <div class="grid grid-cols-2 gap-6 mb-8">
+            <div class="space-y-1">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Voucher Code</p>
+                <p class="text-xl font-black text-[#0b343d] font-mono">{{ voucher.code }}</p>
+                {% if is_developer %}
+                <span class="inline-block px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[9px] font-black uppercase tracking-tighter">DEV MODE</span>
+                {% endif %}
+            </div>
+            <div class="space-y-1">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Device MAC</p>
+                <p class="text-xs font-mono font-bold text-gray-500 break-all">{{ voucher.user_mac_address or 'Unknown' }}</p>
+            </div>
+        </div>
 
-    <div class="mb-4">
-      <p class="text-sm text-gray-600">Device MAC</p>
-      <p class="font-mono">{{ voucher.user_mac_address or 'Unknown' }}</p>
-    </div>
+        <div class="mb-10 text-center p-6 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-100">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Remaining Time</p>
+            {% if is_developer %}
+            <p class="text-3xl font-black text-[#0b343d]">∞ UNLIMITED</p>
+            {% else %}
+            <p id="countdown" class="text-5xl font-black text-[#0b343d] tracking-tighter tabular-nums">--:--:--</p>
+            <p id="expiry" class="text-xs text-gray-400 mt-2 font-medium">Expires: {{ voucher.expires_at or '—' }}</p>
+            {% endif %}
+        </div>
 
-    <div class="space-y-2">
-      {% if session.hotspot_link_orig %}
-      <a id="continueLink" href="{{ session.hotspot_link_orig }}" class="btn btn-primary block text-center">Continue to destination</a>
-      {% endif %}
+        <div class="flex flex-col gap-3">
+            {% if session.hotspot_link_orig %}
+            <a id="continueLink" href="{{ session.hotspot_link_orig }}" class="btn btn-confirm py-4 font-black uppercase tracking-widest text-center shadow-lg">
+                Continue Surfing
+            </a>
+            {% endif %}
 
-      {% if is_developer %}
-      <form method="POST" action="/end-session" class="inline-block w-full">
-        <input type="hidden" name="code" value="{{ voucher.code }}">
-        <button type="submit" class="btn btn-danger block w-full text-center">End Session</button>
-      </form>
-      {% endif %}
+            {% if is_developer %}
+            <form method="POST" action="/end-session" class="w-full">
+                <input type="hidden" name="code" value="{{ voucher.code }}">
+                <button type="submit" class="btn btn-danger w-full py-3 font-black uppercase tracking-widest text-xs">
+                    End Session
+                </button>
+            </form>
+            {% endif %}
 
-      <a href="/" class="btn btn-secondary block text-center">Return</a>
+            <a href="/" class="text-center text-xs font-black text-gray-400 uppercase tracking-widest mt-2 hover:text-[#0b343d] transition-colors">
+                Return to Home
+            </a>
+        </div>
     </div>
   </div>
 </div>

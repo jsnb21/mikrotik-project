@@ -4,18 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HighSpeed Pisonet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
-<body>
+<body class="bg-gray-100">
 
     <!-- Header -->
-    <header>
+    <header style="background-color: var(--bg-deep-teal); padding: 1rem 0;">
         <div class="container mx-auto flex justify-between items-center">
             <h1>
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo"> 
-                MikroTik Project
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" style="height: 32px; display: inline-block; margin-right: 8px;"> 
+                <span style="color: var(--confirm-yellow); font-weight: 800;">MIKROTIK</span> <span style="color: white; font-weight: 300;">PROJECT</span>
             </h1>
             
             <!-- User Menu -->
@@ -67,23 +71,39 @@
     </header>
 
     <!-- Main Content -->
-    <main class="flex-grow container mx-auto p-4">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="mb-4 p-4 rounded {{ 'bg-red-100 text-red-700' if category == 'error' else 'bg-green-100 text-green-700' }}">
-                {{ message }}
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
+    <main class="flex-grow">
         {% block content %}{% endblock %}
     </main>
 
+    <!-- Global Notification Container -->
+    <div id="flash-messages" style="display: none;" 
+         data-messages='{{ get_flashed_messages(with_categories=true) | tojson }}'></div>
+
+    <script src="{{ url_for('static', filename='js/notification.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const flashContainer = document.getElementById('flash-messages');
+            if (flashContainer) {
+                const messages = JSON.parse(flashContainer.dataset.messages || '[]');
+                messages.forEach(([category, message]) => {
+                    // Map Flask categories to notification types
+                    let type = category;
+                    if (category === 'message') type = 'info';
+                    if (category === 'error') type = 'error';
+                    
+                    showNotification(
+                        type.charAt(0).toUpperCase() + type.slice(1), 
+                        message, 
+                        type
+                    );
+                });
+            }
+        });
+    </script>
+
     <!-- Footer -->
-    <footer class="bg-gray-800 text-gray-400 p-4 text-center text-sm">
-        <p>Need help? Call Admin at 0917-XXX-XXXX</p>
+    <footer class="text-gray-500 p-8 text-center text-xs uppercase tracking-widest font-bold" style="background-color: var(--bg-deep-teal);">
+        <p>Powered by MikroTik Project &copy; 2024</p>
     </footer>
 
 </body>

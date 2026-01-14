@@ -1,21 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 mt-10">
-    <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-gray-800">Welcome to WiFi Portal</h2>
-        <p class="text-gray-500">Please login via the captive portal.</p>
-    </div>
-
-    <div class="space-y-4">
-        <div class="p-4 bg-blue-50 text-blue-700 rounded-md text-center">
-            <p class="font-bold">Internet Access</p>
-            <p class="text-sm">You should be automatically redirected to the login page. If not, click below.</p>
+<div class="flex items-center justify-center p-4" style="min-height: 85vh;">
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <!-- Index Header -->
+        <div class="p-10 text-center" style="background: linear-gradient(135deg, #0b343d 0%, #154a54 100%);">
+            <svg class="w-20 h-20 mx-auto mb-6 text-[#ffd41d]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+            <h2 class="text-4xl font-black text-white uppercase tracking-tighter">WiFi Portal</h2>
+            <p class="text-gray-400 font-medium">Fast & Reliable Internet Connection</p>
         </div>
-        
-        <a href="http://192.168.88.1" target="_blank" class="block w-full bg-[#0b343d] hover:opacity-90 text-white font-bold py-3 px-4 rounded transition duration-200 text-center">
-            Go to Login Portal
-        </a>
+
+        <div class="p-8 space-y-6">
+            <div class="p-6 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 text-center">
+                <p class="font-black uppercase text-xs tracking-widest mb-1">Status</p>
+                <p class="text-sm font-medium">You should be automatically redirected to the login page shortly.</p>
+            </div>
+            
+            <a href="http://192.168.88.1" target="_blank" class="block w-full btn btn-confirm py-4 font-black uppercase tracking-widest text-lg shadow-xl text-center">
+                Manual Login
+            </a>
+
+            <div class="pt-4 border-t border-gray-100 text-center">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Administrator Access</p>
+                <a href="{{ url_for('main.login') }}" class="text-[#0b343d] font-bold text-xs hover:underline mt-1 inline-block">Admin Dashboard</a>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
