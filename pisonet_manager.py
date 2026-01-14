@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
+import customtkinter as ctk
 import threading
 import webbrowser
 import sys
@@ -7,19 +8,44 @@ import os
 import json
 import secrets
 import string
+import ctypes
+import queue
 from datetime import datetime, timedelta
+
+# Enable High DPI Support (Windows)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
 
 # Import Application Logic
 sys.path.append(os.getcwd())
 from app import create_app, db
 from app.models import Voucher, Admin
 
-class PisonetManager(tk.Tk):
+class IORedirector(object):
+    def __init__(self, queue, original_stream):
+        self.queue = queue
+        self.original_stream = original_stream
+
+    def write(self, str):
+        self.queue.put(str)
+        self.original_stream.write(str)
+
+    def flush(self):
+        self.original_stream.flush()
+
+class PisonetManager(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("HighSpeed Pisonet Manager")
-        self.geometry("900x650")
+        # Set theme
+        ctk.set_appearance_mode("System")
+        ctk.set_default_color_theme("blue")
+
+        self.title("MikroTik Hotspot Manager")
+        self.geometry("1000x650")
+        self.resizable(False, False)
         try:
             self.iconbitmap("app/static/img/favicon.ico")
         except:
@@ -27,35 +53,53 @@ class PisonetManager(tk.Tk):
 
         # App State
         self.flask_thread = None
+        self.server = None
         self.is_server_running = False
         self.flask_app = create_app()
         self.profiles_file = 'profiles.json'
         
         # Configure Colors
-        self.bg_color = "#F0F0F0"
-        self.sidebar_color = "#2E3B55"
-        self.configure(bg=self.bg_color)
+        self.sidebar_color = "#0b343d"
         
+        # Logging Setup
+        self.log_queue = queue.Queue()
+        sys.stdout = IORedirector(self.log_queue, sys.stdout)
+        sys.stderr = IORedirector(self.log_queue, sys.stderr)
+
         # Initialize UI
         self.setup_ui()
         self.load_profiles()
+        
+        # Start logging loop
+        self.update_log_display()
+
+    def update_log_display(self):
+        while not self.log_queue.empty():
+            try:
+                msg = self.log_queue.get_nowait()
+                if "DashboardView" in self.frames:
+                    self.frames["DashboardView"].log_area.insert("end", msg)
+                    self.frames["DashboardView"].log_area.see("end")
+            except:
+                pass
+        self.after(100, self.update_log_display)
 
     def setup_ui(self):
-        style = ttk.Style()
-        style.theme_use('clam')
-        
         # Split Layout: Left Sidebar, Right Content
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
+        # Store navigation buttons
+        self.nav_buttons = {}
+
         # 1. Sidebar
-        self.sidebar_frame = tk.Frame(self, bg=self.sidebar_color, width=200)
+        self.sidebar_frame = ctk.CTkFrame(self, fg_color=self.sidebar_color, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="ns")
         self.sidebar_frame.grid_propagate(False)
 
         # Sidebar Header
-        lbl_brand = tk.Label(self.sidebar_frame, text="Admin", bg=self.sidebar_color, fg="white", font=("Helvetica", 16, "bold"))
-        lbl_brand.pack(pady=20)
+        lbl_brand = ctk.CTkLabel(self.sidebar_frame, text="Admin", font=("Helvetica", 20, "bold"), text_color="white")
+        lbl_brand.pack(pady=30)
         
         # Sidebar Menu Buttons
         self.create_sidebar_btn("Dashboard", self.show_dashboard)
@@ -63,20 +107,23 @@ class PisonetManager(tk.Tk):
         self.create_sidebar_btn("Hotspot", self.show_hotspot)
         self.create_sidebar_btn("Settings", self.show_settings)
 
+        # 3. Content Area
+        self.content_area = ctk.CTkFrame(self, fg_color="transparent")
+        self.content_area.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        self.content_area.grid_columnconfigure(0, weight=1)
+        self.content_area.grid_rowconfigure(0, weight=1)
+
         # 2. Status Bar (Bottom)
-        self.status_bar = tk.Frame(self, bg="#E0E0E0", height=30)
+        self.grid_rowconfigure(1, weight=0) # Status bar row
+
+        self.status_bar = ctk.CTkFrame(self, height=30, corner_radius=0, fg_color=("#E0E0E0", "#2b2b2b"))
         self.status_bar.grid(row=1, column=0, columnspan=2, sticky="ew")
         
-        self.status_indicator = tk.Canvas(self.status_bar, width=15, height=15, bg="#E0E0E0", highlightthickness=0)
-        self.status_indicator.pack(side=tk.LEFT, padx=5, pady=5)
-        self.draw_status_indicator("black") # Stopped
+        self.status_indicator = ctk.CTkLabel(self.status_bar, text="●", text_color=("black", "gray"), font=("Arial", 16))
+        self.status_indicator.pack(side=tk.LEFT, padx=(10, 5), pady=2)
         
-        self.status_label = tk.Label(self.status_bar, text="Server Stopped", bg="#E0E0E0", font=("Arial", 9))
+        self.status_label = ctk.CTkLabel(self.status_bar, text="Server Stopped", font=("Arial", 12))
         self.status_label.pack(side=tk.LEFT)
-
-        # 3. Content Area
-        self.content_area = tk.Frame(self, bg=self.bg_color)
-        self.content_area.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         
         # Define Frames for each view
         self.frames = {}
@@ -89,11 +136,11 @@ class PisonetManager(tk.Tk):
         self.show_dashboard()
 
     def create_sidebar_btn(self, text, command):
-        btn = tk.Button(self.sidebar_frame, text=text, command=command, 
-                        bg=self.sidebar_color, fg="white", bd=0, 
-                        font=("Arial", 11), activebackground="#4a5a7d", activeforeground="white",
-                        anchor="w", padx=20)
-        btn.pack(fill=tk.X, pady=2)
+        btn = ctk.CTkButton(self.sidebar_frame, text=text, command=command, 
+                        fg_color="transparent", hover_color="#2E3B55",
+                        font=("Arial", 14), anchor="w", height=40)
+        btn.pack(fill=tk.X, pady=2, padx=10)
+        self.nav_buttons[text] = btn
 
     def show_dashboard(self): self.show_frame("DashboardView")
     def show_generate(self): self.show_frame("GenerateView")
@@ -103,13 +150,21 @@ class PisonetManager(tk.Tk):
     def show_frame(self, page_name):
         frame = self.frames[page_name]
         frame.tkraise()
+        
+        # Highlight active button
+        active_btn_name = page_name.replace("View", "")
+        for name, btn in self.nav_buttons.items():
+            if name == active_btn_name:
+                btn.configure(fg_color="#4a5a7d") # Active color
+            else:
+                btn.configure(fg_color="transparent") # Default color
+
         # Refresh if needed
         if hasattr(frame, 'refresh'):
             frame.refresh()
 
     def draw_status_indicator(self, color):
-        self.status_indicator.delete("all")
-        self.status_indicator.create_oval(2, 2, 13, 13, fill=color, outline="")
+        self.status_indicator.configure(text_color=color)
 
     def load_profiles(self):
         self.profiles = []
@@ -137,82 +192,127 @@ class PisonetManager(tk.Tk):
     def start_server(self):
         if self.is_server_running: return
 
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting server...")
+
         def run_flask():
             with self.flask_app.app_context(): db.create_all()
-            self.flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+            from werkzeug.serving import make_server
+            self.server = make_server('0.0.0.0', 5000, self.flask_app)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Server started successfully on http://0.0.0.0:5000")
+            self.server.serve_forever()
 
         self.flask_thread = threading.Thread(target=run_flask, daemon=True)
         self.flask_thread.start()
         self.is_server_running = True
         self.draw_status_indicator("#00FF00")
-        self.status_label.config(text="Server Running: http://127.0.0.1:5000")
+        self.status_label.configure(text="Server Running: http://127.0.0.1:5000")
         
         # Update dashboard button state
-        self.frames["DashboardView"].btn_start.config(state="disabled", text="Running...")
+        self.frames["DashboardView"].btn_start.configure(state="disabled", text="Running...")
+        self.frames["DashboardView"].btn_stop.configure(state="normal")
         
         self.after(2000, lambda: webbrowser.open("http://127.0.0.1:5000/admin"))
 
+    def stop_server(self):
+        if not self.is_server_running: return
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Stopping server...")
+        if self.server:
+            self.server.shutdown()
+            
+        self.is_server_running = False
+        self.flask_thread = None
+        self.server = None
+        self.draw_status_indicator(("black", "gray"))
+        self.status_label.configure(text="Server Stopped")
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Server stopped.")
+        
+        # Update dashboard button state
+        self.frames["DashboardView"].btn_start.configure(state="normal", text="Start Server")
+        self.frames["DashboardView"].btn_stop.configure(state="disabled")
 
-class DashboardView(tk.Frame):
+
+class DashboardView(ctk.CTkFrame):
     def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent, bg=controller.bg_color)
+        ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
         
-        lb = tk.Label(self, text="System Dashboard", font=("Helvetica", 18, "bold"), bg=controller.bg_color, fg="#333")
+        lb = ctk.CTkLabel(self, text="System Dashboard", font=("Helvetica", 24, "bold"))
         lb.pack(anchor="w", pady=(0, 20))
 
         # Controls
-        control_frame = tk.LabelFrame(self, text="Services", bg=controller.bg_color, padx=15, pady=15)
-        control_frame.pack(fill=tk.X)
+        control_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        control_frame.pack(fill=tk.X, padx=2)
+        
+        # Label inside frame - simulated by label on top padding or just a label inside
+        ctk.CTkLabel(control_frame, text="Services", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+        
+        btns_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
+        btns_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        self.btn_start = ttk.Button(control_frame, text="Start Server", command=controller.start_server)
+        self.btn_start = ctk.CTkButton(btns_frame, text="Start Server", command=controller.start_server)
         self.btn_start.pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(control_frame, text="Launch Web Admin", command=lambda: webbrowser.open("http://127.0.0.1:5000/admin")).pack(side=tk.LEFT, padx=5)
+        self.btn_stop = ctk.CTkButton(btns_frame, text="Stop Server", command=controller.stop_server, state="disabled", fg_color="#d9534f", hover_color="#c9302c")
+        self.btn_stop.pack(side=tk.LEFT, padx=5)
+
+        ctk.CTkButton(btns_frame, text="Launch Web Admin", command=lambda: webbrowser.open("http://127.0.0.1:5000/admin"), fg_color="#5bc0de", hover_color="#31b0d5").pack(side=tk.LEFT, padx=5)
 
         # Logs
-        log_frame = tk.LabelFrame(self, text="Logs", bg=controller.bg_color, padx=10, pady=10)
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+        log_label_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        log_label_frame.pack(fill=tk.BOTH, expand=True, pady=20, padx=2)
         
-        self.log_area = scrolledtext.ScrolledText(log_frame, height=10)
-        self.log_area.pack(fill=tk.BOTH, expand=True)
-        self.log_area.insert(tk.END, "Ready...\n")
+        ctk.CTkLabel(log_label_frame, text="Logs", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+        
+        # Using CTkTextbox instead of ScrolledText
+        self.log_area = ctk.CTkTextbox(log_label_frame, height=200)
+        self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.log_area.insert("0.0", "Ready...\n")
 
-class GenerateView(tk.Frame):
+class GenerateView(ctk.CTkFrame):
     def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent, bg=controller.bg_color)
+        ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
 
-        tk.Label(self, text="Generate Vouchers", font=("Helvetica", 18, "bold"), bg=controller.bg_color, fg="#333").pack(anchor="w", pady=(0, 20))
+        ctk.CTkLabel(self, text="Generate Vouchers", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
 
         # Selection Frame
-        sel_frame = tk.LabelFrame(self, text="Select Options", bg=controller.bg_color, padx=20, pady=20)
+        sel_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
         sel_frame.pack(fill=tk.X)
-
-        tk.Label(sel_frame, text="Profile / Plan:", bg=controller.bg_color).grid(row=0, column=0, sticky="w", pady=5)
         
-        self.profile_var = tk.StringVar()
-        self.cb_profiles = ttk.Combobox(sel_frame, textvariable=self.profile_var, state="readonly")
+        ctk.CTkLabel(sel_frame, text="Select Options", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=5)
+
+        form_frame = ctk.CTkFrame(sel_frame, fg_color="transparent")
+        form_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
+
+        ctk.CTkLabel(form_frame, text="Profile / Plan:").grid(row=0, column=0, sticky="w", pady=5)
+        
+        self.profile_var = ctk.StringVar()
+        self.cb_profiles = ctk.CTkComboBox(form_frame, variable=self.profile_var, state="readonly")
         self.cb_profiles.grid(row=0, column=1, sticky="ew", padx=10)
         
-        tk.Label(sel_frame, text="Qty:", bg=controller.bg_color).grid(row=1, column=0, sticky="w", pady=5)
-        self.qty_var = tk.StringVar(value="1")
-        tk.Spinbox(sel_frame, from_=1, to=100, textvariable=self.qty_var, width=5).grid(row=1, column=1, sticky="w", padx=10)
+        ctk.CTkLabel(form_frame, text="Qty:").grid(row=1, column=0, sticky="w", pady=5)
+        self.qty_var = ctk.StringVar(value="1")
+        # Spinbox does not exist in CTK yet, using Entry or option menu. Basic entry for now.
+        ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=1, column=1, sticky="w", padx=10)
 
-        ttk.Button(sel_frame, text="Generate", command=self.generate).grid(row=2, column=1, padx=10, pady=15, sticky="e")
+        ctk.CTkButton(form_frame, text="Generate", command=self.generate).grid(row=2, column=1, padx=10, pady=15, sticky="e")
 
         # Result
-        self.result_frame = tk.LabelFrame(self, text="Generated Codes", bg=controller.bg_color, padx=10, pady=10)
+        self.result_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
         self.result_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        self.result_text = scrolledtext.ScrolledText(self.result_frame)
-        self.result_text.pack(fill=tk.BOTH, expand=True)
+        ctk.CTkLabel(self.result_frame, text="Generated Codes", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+        
+        self.result_text = ctk.CTkTextbox(self.result_frame)
+        self.result_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
     def refresh(self):
         # Update profiles dropdown
         profiles = [p['name'] for p in self.controller.profiles]
-        self.cb_profiles['values'] = profiles
-        if profiles: self.cb_profiles.current(0)
+        self.cb_profiles.configure(values=profiles)
+        if profiles: self.cb_profiles.set(profiles[0])
 
     def generate(self):
         profile_name = self.profile_var.get()
@@ -252,37 +352,58 @@ class GenerateView(tk.Frame):
         self.result_text.insert(tk.END, "\n".join(codes) + "\n\n")
 
 
-class HotspotView(tk.Frame):
+class HotspotView(ctk.CTkFrame):
     def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent, bg=controller.bg_color)
+        ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
 
         # Notebook for Active Users vs Properties
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.pack(fill=tk.BOTH, expand=True)
 
-        self.tab_users = tk.Frame(self.notebook, bg=controller.bg_color)
-        self.tab_profiles = tk.Frame(self.notebook, bg=controller.bg_color)
-        
-        self.notebook.add(self.tab_users, text="Active Users")
-        self.notebook.add(self.tab_profiles, text="User Profiles")
+        self.tab_users = self.tabview.add("Active Users")
+        self.tab_profiles = self.tabview.add("User Profiles")
 
-        self.setup_profiles_tab()
         self.setup_users_tab()
+        self.setup_profiles_tab() # Ensure this is called second or order matters
 
     def setup_users_tab(self):
         # Tools
-        toolbar = tk.Frame(self.tab_users, bg="#ddd", pady=5)
-        toolbar.pack(fill=tk.X)
-        ttk.Button(toolbar, text="Refresh", command=self.load_users).pack(side=tk.LEFT, padx=5)
+        toolbar = ctk.CTkFrame(self.tab_users, fg_color="transparent")
+        toolbar.pack(fill=tk.X, pady=(0, 10))
+        ctk.CTkButton(toolbar, text="Refresh", command=self.load_users, width=100).pack(side=tk.LEFT)
+
+        # Treeview Container (for scrollbar)
+        tree_frame = ctk.CTkFrame(self.tab_users)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Treeview style
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", background="#2a2d2e", foreground="white", fieldbackground="#2a2d2e", borderwidth=0)
+        style.map("Treeview", background=[("selected", "#22559b")])
+        style.configure("Treeview.Heading", background="#565b5e", foreground="white", relief="flat")
+        style.map("Treeview.Heading", background=[("active", "#3484F0")])
 
         # Treeview
-        self.tree_users = ttk.Treeview(self.tab_users, columns=("User", "MAC", "Uptime", "Bytes"), show="headings")
+        self.tree_users = ttk.Treeview(tree_frame, columns=("User", "MAC", "Uptime", "Bytes"), show="headings")
+        
+        # Configure Columns
+        self.tree_users.column("User", width=150, anchor="center")
+        self.tree_users.column("MAC", width=150, anchor="center")
+        self.tree_users.column("Uptime", width=100, anchor="center")
+        self.tree_users.column("Bytes", width=150, anchor="center")
+
         self.tree_users.heading("User", text="User/Code")
         self.tree_users.heading("MAC", text="MAC Address")
         self.tree_users.heading("Uptime", text="Uptime")
         self.tree_users.heading("Bytes", text="Bytes In/Out")
-        self.tree_users.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tree_users.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_users.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree_users.configure(yscrollcommand=scrollbar.set)
 
     def load_users(self):
         for i in self.tree_users.get_children(): self.tree_users.delete(i)
@@ -296,19 +417,34 @@ class HotspotView(tk.Frame):
 
     def setup_profiles_tab(self):
         # Toolbar
-        toolbar = tk.Frame(self.tab_profiles, bg="#ddd", pady=5)
-        toolbar.pack(fill=tk.X)
+        toolbar = ctk.CTkFrame(self.tab_profiles, fg_color="transparent")
+        toolbar.pack(fill=tk.X, pady=(0, 10))
         
-        btn_add = tk.Button(toolbar, text="+ New Profile", bg="#0055ff", fg="white", bd=0, padx=10, command=self.open_add_profile)
-        btn_add.pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(toolbar, text="+ New Profile", command=self.open_add_profile, width=120).pack(side=tk.LEFT)
         
+        # Treeview Container
+        tree_frame = ctk.CTkFrame(self.tab_profiles)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
         # Profile List
-        self.tree_profiles = ttk.Treeview(self.tab_profiles, columns=("Name", "Price", "Validity", "Rate"), show="headings")
+        self.tree_profiles = ttk.Treeview(tree_frame, columns=("Name", "Price", "Validity", "Rate"), show="headings")
+        
+        # Configure Columns
+        self.tree_profiles.column("Name", width=150, anchor="center")
+        self.tree_profiles.column("Price", width=100, anchor="center")
+        self.tree_profiles.column("Validity", width=100, anchor="center")
+        self.tree_profiles.column("Rate", width=150, anchor="center")
+        
         self.tree_profiles.heading("Name", text="Name")
         self.tree_profiles.heading("Price", text="Price")
         self.tree_profiles.heading("Validity", text="Validity")
         self.tree_profiles.heading("Rate", text="Rate Limit")
-        self.tree_profiles.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tree_profiles.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_profiles.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree_profiles.configure(yscrollcommand=scrollbar.set)
 
     def refresh(self):
         # Reload profiles list
@@ -318,58 +454,63 @@ class HotspotView(tk.Frame):
 
     def open_add_profile(self):
         # Modal Dialog styled like screenshot
-        top = tk.Toplevel(self.controller)
+        top = ctk.CTkToplevel(self.controller)
         top.title("New Profile")
-        top.geometry("400x450")
-        top.configure(bg="#f0f0f0")
+        top.geometry("400x500")
+        top.grab_set() # Make modal
         
         # Header
-        tk.Label(top, text="New Profile", bg="#0000aa", fg="white", font=("Arial", 12, "bold"), anchor="w", padx=10).pack(fill=tk.X, ipady=5)
+        ctk.CTkLabel(top, text="New Profile", font=("Arial", 20, "bold")).pack(fill=tk.X, pady=(20, 10))
 
-        form = tk.Frame(top, bg="#f0f0f0", padx=20, pady=20)
-        form.pack(fill=tk.BOTH, expand=True)
+        form = ctk.CTkFrame(top)
+        form.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         def add_row(label, row):
-            tk.Label(form, text=label, bg="#f0f0f0").grid(row=row, column=0, sticky="e", pady=5, padx=5)
-            e = tk.Entry(form)
-            e.grid(row=row, column=1, sticky="ew", pady=5)
+            ctk.CTkLabel(form, text=label).grid(row=row, column=0, sticky="e", pady=10, padx=10)
+            e = ctk.CTkEntry(form)
+            e.grid(row=row, column=1, sticky="ew", pady=10, padx=10)
             return e
 
         e_name = add_row("Name:", 0)
         e_users = add_row("Shared User:", 1); e_users.insert(0, "1")
         
         # Rate Limit complex row
-        tk.Label(form, text="Rate Limit:", bg="#f0f0f0").grid(row=2, column=0, sticky="e", pady=5, padx=5)
-        rate_frame = tk.Frame(form, bg="#f0f0f0")
-        rate_frame.grid(row=2, column=1, sticky="w")
-        e_rate_up = tk.Entry(rate_frame, width=5); e_rate_up.pack(side=tk.LEFT); e_rate_up.insert(0, "1M")
-        tk.Label(rate_frame, text="Upload", bg="#f0f0f0", font=("Arial", 7)).pack(side=tk.LEFT)
-        e_rate_down = tk.Entry(rate_frame, width=5); e_rate_down.pack(side=tk.LEFT, padx=(5,0)); e_rate_down.insert(0, "2M")
-        tk.Label(rate_frame, text="Download", bg="#f0f0f0", font=("Arial", 7)).pack(side=tk.LEFT)
+        ctk.CTkLabel(form, text="Rate Limit:").grid(row=2, column=0, sticky="e", pady=10, padx=10)
+        rate_frame = ctk.CTkFrame(form, fg_color="transparent")
+        rate_frame.grid(row=2, column=1, sticky="w", padx=10)
+        e_rate_up = ctk.CTkEntry(rate_frame, width=60); e_rate_up.pack(side=tk.LEFT); e_rate_up.insert(0, "1M")
+        ctk.CTkLabel(rate_frame, text="UL").pack(side=tk.LEFT, padx=2)
+        e_rate_down = ctk.CTkEntry(rate_frame, width=60); e_rate_down.pack(side=tk.LEFT, padx=(5,0)); e_rate_down.insert(0, "2M")
+        ctk.CTkLabel(rate_frame, text="DL").pack(side=tk.LEFT, padx=2)
 
         e_validity = add_row("Validity:", 3); e_validity.insert(0, "1h") # Hint: h, d, m
         e_price = add_row("Price:", 4)
 
         def save():
-            new_p = {
-                "name": e_name.get(),
-                "shared_users": e_users.get(),
-                "rate_up": e_rate_up.get(),
-                "rate_down": e_rate_down.get(),
-                "validity": e_validity.get(),
-                "price": e_price.get()
-            }
-            self.controller.profiles.append(new_p)
-            self.controller.save_profiles()
-            self.refresh()
-            top.destroy()
+            try:
+                new_p = {
+                    "name": e_name.get(),
+                    "shared_users": e_users.get(),
+                    "rate_up": e_rate_up.get(),
+                    "rate_down": e_rate_down.get(),
+                    "validity": e_validity.get(),
+                    "price": e_price.get()
+                }
+                self.controller.profiles.append(new_p)
+                self.controller.save_profiles()
+                self.refresh()
+                top.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save profile: {e}")
+                print(e)
 
-        tk.Button(top, text="Create", bg="#0000aa", fg="white", command=save, width=15).pack(pady=10)
+        ctk.CTkButton(top, text="Create", command=save, width=150).pack(pady=20)
 
-class SettingsView(tk.Frame):
+class SettingsView(ctk.CTkFrame):
     def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent, bg=controller.bg_color)
-        tk.Label(self, text="Settings (Placeholder)", bg=controller.bg_color).pack(pady=20)
+        ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
+        ctk.CTkLabel(self, text="Settings", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
+        ctk.CTkLabel(self, text="Application Settings (Placeholder)", font=("Arial", 14)).pack(pady=20)
 
 if __name__ == "__main__":
     app = PisonetManager()
