@@ -266,37 +266,36 @@ def admin_dashboard():
     
     # Create single connection pool
     pool = get_mikrotik_api()
+    api_connection = False 
     
     if pool:
         try:
-            api = pool.get_api()
-            # Pass the open API instance to helper functions
-            system_stats = get_mikrotik_system_stats(api=api)
-            active_users = get_mikrotik_active_hotspot_users(api=api)
-            traffic = get_mikrotik_interface_traffic(api=api)
+            api_connection = pool.get_api()
         except Exception as e:
-            print(f"Dashboard data fetch error: {e}")
-        finally:
-            pool.disconnect()
-    
-    # Fallback if connection failed or partly failed (helpers return mock/empty on error if no api passed, 
-    # but here we passed api, they might return mock if exception caught inside them. 
-    # If pool setup failed, they will initiate their own connections if we called them without args, 
-    # but we want to avoid that latency. So we handle the fallback here if everything failed.)
-    
-    # Fallback if specific data is missing (helpers return mock data on failure)
-    # We purposefully call them without args here ONLY if the main connection failed completely,
-    # so they can return their mock data (or try to connect individually if you really wanted that, but checking 'if system_stats is None' implies the initial fetch failed).
-    # Actually, the helpers return mock data if `api` passed is bad? No, they use the passed api. 
-    # If we pass an API and it fails inside, they catch exception and return None? 
-    # Let's check the utils implementation again.
-    # get_mikrotik_system_stats returns mock_data on exception.
-    # So system_stats will rarely be None unless something very weird happens.
-    
-    if system_stats is None: system_stats = get_mikrotik_system_stats(api=None) 
-    if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=None)
-    if traffic is None: traffic = get_mikrotik_interface_traffic(api=None)
+            # print(f"Dashboard data fetch error: {e}")
+            api_connection = False 
 
+    # Fetch data using the established connection OR force mock (False)
+    try:
+        if system_stats is None: system_stats = get_mikrotik_system_stats(api=api_connection)
+        if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=api_connection)
+        if traffic is None: traffic = get_mikrotik_interface_traffic(api=api_connection)
+    except Exception as e:
+        print(f"Error in data gathering: {e}")
+        # Last resort
+        if system_stats is None: system_stats = get_mikrotik_system_stats(api=False)
+        if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=False)
+        if traffic is None: traffic = get_mikrotik_interface_traffic(api=False)
+
+    if pool:
+        try: pool.disconnect()
+        except: pass
+
+    # Ensure we never have None
+    if system_stats is None: system_stats = get_mikrotik_system_stats(api=False)
+    if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=False)
+    if traffic is None: traffic = get_mikrotik_interface_traffic(api=False)
+    
     admins = Admin.query.all()
 
     return render_template('admin.html', 
