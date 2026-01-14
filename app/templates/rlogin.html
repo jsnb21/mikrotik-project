@@ -8,26 +8,37 @@ $(if http-header == "Location")http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link
 <meta http-equiv="expires" content="-1">
 <style>
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
     margin: 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-color: #0b343d;
+    color: white;
 }
 .loader {
     text-align: center;
-    color: white;
+    padding: 2rem;
 }
 .spinner {
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid #3498db;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top: 4px solid #ffd41d;
     border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    margin: 0 auto 30px;
+}
+h2 {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+p {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.875rem;
 }
 @keyframes spin {
     0% { transform: rotate(0deg); }
