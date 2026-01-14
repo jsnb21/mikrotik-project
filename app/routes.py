@@ -84,10 +84,13 @@ def index():
         code = session['active_code']
         voucher = Voucher.query.filter_by(code=code).first()
         if voucher and voucher.remaining_seconds > 0:
+            current_app.logger.info("Index: Found active code in session, redirecting to status: code=%s", code)
             return redirect(url_for('main.status_page', code=code))
         else:
             # Clean up expired session
+            current_app.logger.info("Index: Active code expired or not found, cleaning up: code=%s", code)
             session.pop('active_code', None)
+            session.modified = True  # Ensure session changes are saved
     
     # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
     if not mac_address:
