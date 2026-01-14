@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+  <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-6">
+    <h2 class="text-2xl font-bold mb-2">Connection Status</h2>
+
+    <div class="mb-4">
+      <p class="text-sm text-gray-600">Voucher Code</p>
+      <p class="text-xl font-mono font-semibold">{{ voucher.code }}</p>
+      {% if is_developer %}
+      <p class="text-xs text-blue-600 font-semibold">🔧 Developer Code</p>
+      {% endif %}
+    </div>
+
+    <div class="mb-4">
+      <p class="text-sm text-gray-600">Remaining Time</p>
+      {% if is_developer %}
+      <p class="text-2xl font-bold text-blue-600">∞ Unlimited</p>
+      {% else %}
+      <p id="countdown" class="text-2xl font-bold text-green-600">calculating...</p>
+      <p id="expiry" class="text-xs text-gray-500 mt-1">Expires: {{ voucher.expires_at or '—' }}</p>
+      {% endif %}
+    </div>
+
+    <div class="mb-4">
+      <p class="text-sm text-gray-600">Device MAC</p>
+      <p class="font-mono">{{ voucher.user_mac_address or 'Unknown' }}</p>
+    </div>
+
+    <div class="space-y-2">
+      {% if session.hotspot_link_orig %}
+      <a id="continueLink" href="{{ session.hotspot_link_orig }}" class="btn btn-primary block text-center">Continue to destination</a>
+      {% endif %}
+
+      {% if is_developer %}
+      <form method="POST" action="/end-session" class="inline-block w-full">
+        <input type="hidden" name="code" value="{{ voucher.code }}">
+        <button type="submit" class="btn btn-danger block w-full text-center">End Session</button>
+      </form>
+      {% endif %}
+
+      <a href="/" class="btn btn-secondary block text-center">Return</a>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/notification.js') }}"></script>
+<script src="{{ url_for('static', filename='js/status.js') }}"></script>
+<script>
+  // Initialize status page with Jinja2 variables
+  const code = '{{ voucher.code }}';
+  const isDeveloper = {{ 'true' if is_developer else 'false' }};
+  initializeStatusPage(code, isDeveloper);
+  
+  // Show initial notification
+  notifySuccess('Connected', 'You now have internet access!');
+</script>
+
+{% endblock %}
