@@ -66,9 +66,11 @@ def get_mikrotik_api():
         print(f"[MIKROTIK] Connection error: {str(e)}")
         return None
 
-def get_mikrotik_system_stats():
+def get_mikrotik_system_stats(api_pool=None):
     """
     Fetch system resource usage from MikroTik.
+    Args:
+        api_pool: Optional existing MikroTik API connection to reuse
     Returns: dict with cpu, memory, uptime, etc.
     Fallback: Returns mock data if connection fails.
     """
@@ -81,7 +83,11 @@ def get_mikrotik_system_stats():
         "version": "Unknown"
     }
 
-    api_pool = get_mikrotik_api()
+    # Use provided connection or create new one
+    connection_provided = api_pool is not None
+    if not connection_provided:
+        api_pool = get_mikrotik_api()
+    
     if not api_pool:
         return mock_data
 
@@ -108,9 +114,11 @@ def get_mikrotik_system_stats():
     except Exception as e:
         print(f"[MIKROTIK] Error fetching system stats: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        # Only disconnect if we created the connection
+        if not connection_provided:
+            try:
+                api_pool.disconnect()
+            except: pass
         
     return mock_data
 
@@ -214,9 +222,11 @@ def get_mac_from_active_session(client_ip):
     
     return None
 
-def get_mikrotik_active_hotspot_users():
+def get_mikrotik_active_hotspot_users(api_pool=None):
     """
     Fetch active hotspot users from MikroTik.
+    Args:
+        api_pool: Optional existing MikroTik API connection to reuse
     Returns: list of dicts.
     Fallback: Returns mock data if connection fails.
     """
@@ -224,7 +234,11 @@ def get_mikrotik_active_hotspot_users():
         {"user": "user1 (mock)", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
     ]
 
-    api_pool = get_mikrotik_api()
+    # Use provided connection or create new one
+    connection_provided = api_pool is not None
+    if not connection_provided:
+        api_pool = get_mikrotik_api()
+    
     if not api_pool:
         return mock_data
 
@@ -247,9 +261,11 @@ def get_mikrotik_active_hotspot_users():
     except Exception as e:
         print(f"[MIKROTIK] Error fetching active users: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        # Only disconnect if we created the connection
+        if not connection_provided:
+            try:
+                api_pool.disconnect()
+            except: pass
         
     return mock_data
 
@@ -269,9 +285,12 @@ def get_income_stats():
         "labels_monthly": ["Jan", "Feb", "Mar", "Apr", "May"]
     }
 
-def get_mikrotik_interface_traffic(interface_name=None):
+def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     """
     Get current traffic on an interface.
+    Args:
+        interface_name: Optional interface name (default from env var)
+        api_pool: Optional existing MikroTik API connection to reuse
     Fallback: Returns random mock data if connection fails.
     """
     import random
@@ -283,7 +302,11 @@ def get_mikrotik_interface_traffic(interface_name=None):
     if not interface_name:
         interface_name = os.getenv('MIKROTIK_WAN_INTERFACE', 'ether1')
 
-    api_pool = get_mikrotik_api()
+    # Use provided connection or create new one
+    connection_provided = api_pool is not None
+    if not connection_provided:
+        api_pool = get_mikrotik_api()
+    
     if not api_pool:
         return mock_data
 
@@ -305,9 +328,11 @@ def get_mikrotik_interface_traffic(interface_name=None):
     except Exception as e:
         print(f"[MIKROTIK] Error fetching traffic for {interface_name}: {e}")
     finally:
-        try:
-            api_pool.disconnect()
-        except: pass
+        # Only disconnect if we created the connection
+        if not connection_provided:
+            try:
+                api_pool.disconnect()
+            except: pass
         
     return mock_data
 

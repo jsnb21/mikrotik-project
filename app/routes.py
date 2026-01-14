@@ -256,11 +256,21 @@ def api_status(code_or_mac):
 @bp.route('/admin')
 @login_required
 def admin_dashboard():
-    # Fetch Analytics from MikroTik
-    system_stats = get_mikrotik_system_stats()
-    active_users = get_mikrotik_active_hotspot_users()
-    traffic = get_mikrotik_interface_traffic()
-    income_stats = get_income_stats()
+    # Fetch Analytics from MikroTik - use single connection for all calls
+    from .utils import get_mikrotik_api
+    api_pool = get_mikrotik_api()
+    
+    try:
+        system_stats = get_mikrotik_system_stats(api_pool)
+        active_users = get_mikrotik_active_hotspot_users(api_pool)
+        traffic = get_mikrotik_interface_traffic(api_pool=api_pool)
+        income_stats = get_income_stats()
+    finally:
+        if api_pool:
+            try:
+                api_pool.disconnect()
+            except:
+                pass
     
     admins = Admin.query.all()
 

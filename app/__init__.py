@@ -74,10 +74,10 @@ def create_app(config_class=Config):
         global scheduler
         if scheduler is None:
             scheduler = BackgroundScheduler(daemon=True)
-            # Check for expired vouchers every 30 seconds
+            # Check for expired vouchers every 15 seconds
             scheduler.add_job(func=lambda: check_expired_vouchers_with_context(app), 
                             trigger="interval", 
-                            seconds=30,
+                            seconds=15,
                             id='check_expired_vouchers',
                             replace_existing=True)
             scheduler.start()
