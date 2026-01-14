@@ -1,3 +1,9 @@
+def flask_run():
+    from app import create_app, db
+    app = create_app()
+    with app.app_context():
+        db.create_all()
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import threading
@@ -15,6 +21,19 @@ from app import create_app, db
 from app.models import Voucher, Admin
 
 class PisonetManager(tk.Tk):
+    def setup_logging(self):
+        import sys
+        class TextRedirector:
+            def __init__(self, log_func):
+                self.log_func = log_func
+            def write(self, msg):
+                if msg.strip():
+                    self.log_func(msg)
+            def flush(self):
+                pass
+        sys.stdout = TextRedirector(self.log_to_gui)
+        sys.stderr = TextRedirector(self.log_to_gui)
+
     def __init__(self):
         super().__init__()
 
@@ -26,9 +45,8 @@ class PisonetManager(tk.Tk):
             pass
 
         # App State
-        self.flask_thread = None
+        self.flask_process = None
         self.is_server_running = False
-        self.flask_app = create_app()
         self.profiles_file = 'profiles.json'
         
         # Configure Colors
@@ -39,6 +57,7 @@ class PisonetManager(tk.Tk):
         # Initialize UI
         self.setup_ui()
         self.load_profiles()
+        self.setup_logging()
 
     def setup_ui(self):
         style = ttk.Style()
@@ -134,23 +153,46 @@ class PisonetManager(tk.Tk):
         except Exception as e:
             print(f"Error saving profiles: {e}")
 
+
     def start_server(self):
-        if self.is_server_running: return
+        if self.is_server_running:
+            self.stop_server()
+            return
 
-        def run_flask():
-            with self.flask_app.app_context(): db.create_all()
-            self.flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-
-        self.flask_thread = threading.Thread(target=run_flask, daemon=True)
-        self.flask_thread.start()
+        import multiprocessing
+        self.flask_process = multiprocessing.Process(target=flask_run)
+        self.flask_process.start()
         self.is_server_running = True
         self.draw_status_indicator("#00FF00")
         self.status_label.config(text="Server Running: http://127.0.0.1:5000")
-        
-        # Update dashboard button state
-        self.frames["DashboardView"].btn_start.config(state="disabled", text="Running...")
-        
+        self.frames["DashboardView"].btn_start.config(state="normal", text="Stop Server")
+        self.log_to_gui("Server started at http://127.0.0.1:5000")
         self.after(2000, lambda: webbrowser.open("http://127.0.0.1:5000/admin"))
+
+    def stop_server(self):
+        if not self.is_server_running or not self.flask_process:
+            return
+        try:
+            self.flask_process.terminate()
+            self.flask_process.join(timeout=5)
+            self.log_to_gui("Flask server process terminated.")
+        except Exception as e:
+            self.log_to_gui(f"Error terminating server: {e}")
+        self.is_server_running = False
+        self.flask_process = None
+        self.draw_status_indicator("black")
+        self.status_label.config(text="Server Stopped")
+        self.frames["DashboardView"].btn_start.config(state="normal", text="Start Server")
+        self.log_to_gui("Server stopped.")
+
+    def log_to_gui(self, msg):
+        try:
+            frame = self.frames.get("DashboardView")
+            if frame and hasattr(frame, "log_area"):
+                frame.log_area.insert(tk.END, msg + "\n")
+                frame.log_area.see(tk.END)
+        except Exception as e:
+            print(f"GUI log error: {e}")
 
 
 class DashboardView(tk.Frame):
@@ -164,6 +206,7 @@ class DashboardView(tk.Frame):
         # Controls
         control_frame = tk.LabelFrame(self, text="Services", bg=controller.bg_color, padx=15, pady=15)
         control_frame.pack(fill=tk.X)
+
 
         self.btn_start = ttk.Button(control_frame, text="Start Server", command=controller.start_server)
         self.btn_start.pack(side=tk.LEFT, padx=5)
