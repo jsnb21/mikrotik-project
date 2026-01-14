@@ -22,9 +22,46 @@ def get_mikrotik_api():
         port = int(os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true'
         
-        api = RouterOsApiPool(host, username=username, password=password, 
-                             port=port, use_ssl=use_ssl, plaintext_login=True)
-        return api
+        # Strip whitespace from credentials (common .env issue)
+        username = username.strip()
+        password = password.strip()
+        
+        # Show password hint for debugging (first char + *** + last char)
+        pwd_hint = f"{password[0]}***{password[-1]}" if len(password) > 2 else "***"
+        print(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, password={pwd_hint} (length={len(password)})")
+        
+        # Try API-SSL first (port 8729) if regular port fails
+        connection_attempts = []
+        
+        # Attempt 1: Plaintext login first (most reliable for RouterOS API)
+        connection_attempts.append(('plaintext', port, use_ssl, True))
+        
+        # Attempt 2: Try challenge-response (normal)
+        if not use_ssl:
+            connection_attempts.append(('normal', port, False, False))
+        else:
+            connection_attempts.append(('ssl', port, True, False))
+            
+        # Attempt 3: Try API-SSL on 8729 as fallback
+        if port == 8728:
+            connection_attempts.append(('ssl-8729', 8729, True, False))
+        
+        for attempt_name, attempt_port, attempt_ssl, plaintext in connection_attempts:
+            try:
+                print(f"[DEBUG] Trying connection method: {attempt_name}")
+                if plaintext:
+                    api = RouterOsApiPool(host, username=username, password=password, 
+                                         port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
+                else:
+                    api = RouterOsApiPool(host, username=username, password=password, 
+                                         port=attempt_port, use_ssl=attempt_ssl)
+                print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
+                return api
+            except Exception as e:
+                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:100]}")
+                continue
+        
+        raise Exception("All connection attempts failed")
     except Exception as e:
         print(f"[MIKROTIK] Connection error: {str(e)}")
         return None

@@ -11,6 +11,10 @@ import string
 import ctypes
 import queue
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file BEFORE importing app
+load_dotenv()
 
 # Enable High DPI Support (Windows)
 try:
@@ -450,12 +454,18 @@ class GenerateView(ctk.CTkFrame):
         self.cb_profiles = ctk.CTkComboBox(form_frame, variable=self.profile_var, state="readonly")
         self.cb_profiles.grid(row=0, column=1, sticky="ew", padx=10)
         
-        ctk.CTkLabel(form_frame, text="Qty:").grid(row=1, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Duration (Override):").grid(row=1, column=0, sticky="w", pady=5)
+        self.duration_var = ctk.StringVar(value="Use Profile")
+        self.cb_duration = ctk.CTkComboBox(form_frame, variable=self.duration_var, state="readonly", 
+                                            values=["Use Profile", "2 mins", "30 mins", "1 hour", "1 day"])
+        self.cb_duration.grid(row=1, column=1, sticky="ew", padx=10)
+        
+        ctk.CTkLabel(form_frame, text="Qty:").grid(row=2, column=0, sticky="w", pady=5)
         self.qty_var = ctk.StringVar(value="1")
         # Spinbox does not exist in CTK yet, using Entry or option menu. Basic entry for now.
-        ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=1, column=1, sticky="w", padx=10)
+        ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=2, column=1, sticky="w", padx=10)
 
-        ctk.CTkButton(form_frame, text="Generate", command=self.generate, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).grid(row=2, column=1, padx=10, pady=15, sticky="e")
+        ctk.CTkButton(form_frame, text="Generate", command=self.generate, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).grid(row=3, column=1, padx=10, pady=15, sticky="e")
 
         # Result
         self.result_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
@@ -481,17 +491,34 @@ class GenerateView(ctk.CTkFrame):
         profile = next((p for p in self.controller.profiles if p['name'] == profile_name), None)
         if not profile: return
         
-        # Parse validity to seconds
-        try:
-            val_str = profile['validity'].lower().strip()
-            total_seconds = 0
-            if val_str.endswith('h'): total_seconds = int(val_str[:-1]) * 3600
-            elif val_str.endswith('d'): total_seconds = int(val_str[:-1]) * 86400
-            elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
-            else: total_seconds = int(val_str) * 60 # Default mins
-        except:
-            CustomMessageBox("Error", "Invalid validity format in profile.", "error")
-            return
+        # Check if duration override is selected
+        duration_override = self.duration_var.get()
+        if duration_override != "Use Profile":
+            # Parse override duration
+            if duration_override == "2 mins":
+                total_seconds = 2 * 60
+            elif duration_override == "30 mins":
+                total_seconds = 30 * 60
+            elif duration_override == "1 hour":
+                total_seconds = 3600
+            elif duration_override == "1 day":
+                total_seconds = 86400
+            else:
+                total_seconds = 2 * 60
+            display_str = duration_override
+        else:
+            # Parse validity from profile to seconds
+            try:
+                val_str = profile['validity'].lower().strip()
+                total_seconds = 0
+                if val_str.endswith('h'): total_seconds = int(val_str[:-1]) * 3600
+                elif val_str.endswith('d'): total_seconds = int(val_str[:-1]) * 86400
+                elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
+                else: total_seconds = int(val_str) * 60 # Default mins
+            except:
+                CustomMessageBox("Error", "Invalid validity format in profile.", "error")
+                return
+            display_str = profile['validity']
 
         qty = int(self.qty_var.get())
         codes = []
@@ -504,7 +531,7 @@ class GenerateView(ctk.CTkFrame):
                 
                 v = Voucher(code=code, duration=total_seconds)
                 db.session.add(v)
-                codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
+                codes.append(f"{code}  ({profile['name']} - {display_str})")
             db.session.commit()
 
         self.result_text.configure(state="normal")
