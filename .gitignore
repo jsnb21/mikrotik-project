@@ -5626,3 +5626,5 @@ VercelesEnv/Lib/site-packages/tzlocal/utils.py
 VercelesEnv/Lib/site-packages/tzlocal/win32.py
 VercelesEnv/Lib/site-packages/tzlocal/windows_tz.py
 *.pyc
+
+tests/
