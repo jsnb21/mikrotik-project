@@ -360,3 +360,28 @@ def mikrotik_kick_mac(mac_address):
             api_pool.disconnect()
         except Exception:
             pass
+
+def get_mac_from_arp(ip_address):
+    """Get MAC address from MikroTik ARP table by IP address."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return None
+    
+    try:
+        api = api_pool.get_api()
+        arp = api.get_resource('/ip/arp')
+        entries = arp.get(**{'address': ip_address})
+        
+        if entries and isinstance(entries, list) and len(entries) > 0:
+            mac = entries[0].get('mac-address')
+            print(f"[MIKROTIK] Found ARP entry for IP {ip_address}: MAC {mac}")
+            return mac
+    except Exception as e:
+        print(f"[MIKROTIK] Error looking up ARP for IP {ip_address}: {str(e)}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+    
+    return None
