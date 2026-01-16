@@ -222,6 +222,37 @@ def get_mac_from_active_session(client_ip):
     
     return None
 
+def get_mac_from_arp(ip_address):
+    """
+    Get MAC address from MikroTik ARP table by IP address.
+    """
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        # Fallback for development/testing when no router is connected
+        print(f"[MIKROTIK] Connection unavailable, cannot resolve ARP for {ip_address}")
+        return None
+
+    try:
+        api = api_pool.get_api()
+        # Look up in ARP table
+        arp_entries = api.get_resource('/ip/arp').get(**{'address': ip_address})
+        
+        if arp_entries and isinstance(arp_entries, list) and len(arp_entries) > 0:
+            mac = arp_entries[0].get('mac-address')
+            print(f"[MIKROTIK] Found ARP entry for IP {ip_address}: MAC {mac}")
+            return mac
+        
+        print(f"[MIKROTIK] No ARP entry found for IP {ip_address}")
+    except Exception as e:
+        print(f"[MIKROTIK] Error looking up ARP for IP {ip_address}: {str(e)}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+            
+    return None
+
 def get_mikrotik_active_hotspot_users(api_pool=None):
     """
     Fetch active hotspot users from MikroTik.
