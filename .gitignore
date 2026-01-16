@@ -5628,3 +5628,5 @@ VercelesEnv/Lib/site-packages/tzlocal/windows_tz.py
 *.pyc
 
 tests/
+
+venv/

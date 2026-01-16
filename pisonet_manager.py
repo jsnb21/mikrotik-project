@@ -80,9 +80,38 @@ class CustomMessageBox(ctk.CTkToplevel):
         # OK Button
         self.btn_ok = ctk.CTkButton(self, text="OK", command=self.destroy, width=100, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 14, "bold"))
         self.btn_ok.pack(pady=(0, 20))
-        
-        self.grab_set()
-        self.focus_force()
+        # Try to grab input for modal behavior, but the window may not be
+        # viewable immediately (causes TclError: grab failed: window not viewable).
+        # Schedule a few retries instead of calling grab_set() directly.
+        self._grab_attempts = 0
+        self._max_grab_attempts = 6
+        # ensure geometry is calculated
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
+
+        # Try to grab after a short delay so the window manager has time to map it.
+        self.after(20, self._try_grab)
+
+    def _try_grab(self):
+        try:
+            self.grab_set()
+            try:
+                self.focus_force()
+            except Exception:
+                pass
+        except tk.TclError:
+            # Window not viewable yet. Retry a few times with short delay, then give up.
+            self._grab_attempts += 1
+            if self._grab_attempts < self._max_grab_attempts:
+                try:
+                    self.after(50, self._try_grab)
+                except Exception:
+                    pass
+            else:
+                # Last-resort: don't block the application if grabbing never succeeds.
+                pass
 
 class ToolTip(object):
     def __init__(self, widget, text):
