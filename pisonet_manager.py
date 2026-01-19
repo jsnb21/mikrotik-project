@@ -485,17 +485,26 @@ class GenerateView(ctk.CTkFrame):
         profile = next((p for p in self.controller.profiles if p['name'] == profile_name), None)
         if not profile: return
         
-        # Parse validity from profile to seconds
+        # Parse validity to days (float)
         try:
             val_str = profile['validity'].lower().strip()
-            total_seconds = 0
-            if val_str.endswith('h'): total_seconds = int(val_str[:-1]) * 3600
-            elif val_str.endswith('d'): total_seconds = int(val_str[:-1]) * 86400
-            elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
-            else: total_seconds = int(val_str) * 60 # Default mins
+            days = 0.0
+            if val_str.endswith('h'): 
+                days = float(val_str[:-1]) / 24.0
+            elif val_str.endswith('d'): 
+                days = float(val_str[:-1])
+            elif val_str.endswith('m'): 
+                days = float(val_str[:-1]) / 1440.0
+            else: 
+                # Default assume minutes if just a number? Or days? 
+                # Original code assumed minutes for raw number. 
+                days = float(val_str) / 1440.0
         except:
             CustomMessageBox("Error", "Invalid validity format in profile.", "error")
             return
+
+        price = float(profile.get('price', 0))
+        data_limit = float(profile.get('data_limit', 50.0)) # Default 50GB if not in profile
 
         qty = int(self.qty_var.get())
         codes = []
@@ -506,7 +515,13 @@ class GenerateView(ctk.CTkFrame):
                 while Voucher.query.filter_by(code=code).first():
                     code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
                 
-                v = Voucher(code=code, duration=total_seconds)
+                v = Voucher(
+                    code=code, 
+                    duration_days=days,
+                    data_limit_gb=data_limit,
+                    price=price,
+                    status='unused'
+                )
                 db.session.add(v)
                 codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
             db.session.commit()

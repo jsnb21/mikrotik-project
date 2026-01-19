@@ -55,6 +55,34 @@ def check_expired_vouchers():
     except Exception as e:
         print(f"[SCHEDULER] Error checking expired vouchers: {str(e)}")
 
+def check_fup():
+    """Background job to check FUP limits."""
+    from .utils import get_all_active_users, set_hotspot_user_profile
+    
+    try:
+        active_users = get_all_active_users()
+        for user in active_users:
+            try:
+                # Convert bytes to GB (MikroTik returns bytes-out)
+                bytes_out = int(user.get('bytes-out', 0))
+                usage_gb = bytes_out / (1024**3)
+                
+                if usage_gb > 50: # 50GB Threshold
+                    # Move to Limited Profile
+                    username = user.get('name') or user.get('user')
+                    if username:
+                        set_hotspot_user_profile(username, "Limited")
+                        print(f"[FUP] User {username} exceeded 50GB. Moved to Limited profile.")
+            except Exception as inner_e:
+                print(f"[FUP] Error processing user {user}: {inner_e}")
+                
+    except Exception as e:
+        print(f"[SCHEDULER] Error checking FUP: {str(e)}")
+
+def check_fup_with_context(app):
+    with app.app_context():
+        check_fup()
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -80,8 +108,16 @@ def create_app(config_class=Config):
                             seconds=15,
                             id='check_expired_vouchers',
                             replace_existing=True)
+            
+            # Check FUP every 5 minutes
+            scheduler.add_job(func=lambda: check_fup_with_context(app),
+                            trigger="interval",
+                            minutes=5,
+                            id='check_fup',
+                            replace_existing=True)
+                            
             scheduler.start()
-            print("[SCHEDULER] Started automatic voucher expiration monitor (every 30 seconds)")
+            print("[SCHEDULER] Started automatic voucher expiration monitor and FUP check")
             
             # Shutdown scheduler when app exits
             atexit.register(lambda: scheduler.shutdown())

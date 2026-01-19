@@ -87,13 +87,13 @@
     <!-- Finance Tab -->
     <div id="content-finance" class="tab-content hidden transition-opacity duration-300">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div class="bg-[#ffd41d] p-6 rounded-2xl shadow-xl border-b-4 border-black">
-                <p class="text-[10px] uppercase font-black text-black/60 mb-1">Earned Today</p>
-                <p class="text-3xl font-black text-black">₱{{ "{:,}".format(income_stats.earned_today) }}</p>
+            <div class="bg-black p-6 rounded-2xl shadow-xl border-b-4 border-[#ffd41d]">
+                <p class="text-[10px] uppercase font-black text-white/60 mb-1">Total Revenue (Lifetime)</p>
+                <p class="text-3xl font-black text-[#ffd41d]">₱{{ "{:,.2f}".format(revenue) }}</p>
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-xl border-b-4 border-[#0b343d]">
-                <p class="text-[10px] uppercase font-black text-gray-400 mb-1">This Month</p>
-                <p class="text-3xl font-black text-[#0b343d]">₱{{ "{:,}".format(income_stats.earned_month) }}</p>
+                <p class="text-[10px] uppercase font-black text-gray-400 mb-1">Earned Today</p>
+                <p class="text-3xl font-black text-[#0b343d]">₱{{ "{:,}".format(income_stats.earned_today) }}</p>
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-xl border-b-4 border-[#0b343d]">
                 <p class="text-[10px] uppercase font-black text-gray-400 mb-1">Total Year</p>
@@ -167,6 +167,38 @@
                         <tr>
                             <td colspan="5" class="px-8 py-12 text-center text-gray-400 font-medium italic">No active users currently connected.</td>
                         </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 5-Day Reminder Card (Expiring Vouchers) -->
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden mt-8">
+            <div class="p-8 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-xl font-black text-[#ff5f52] uppercase tracking-tight">Expiring Soon (5 Days)</h2>
+                <span class="bg-red-100 text-red-600 px-4 py-1 rounded-full text-xs font-black">{{ expiring_vouchers|length }} Vouchers</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-8 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Code</th>
+                            <th class="px-8 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">MAC Address</th>
+                             <th class="px-8 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Activated At</th>
+                            <th class="px-8 py-5 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Expires At</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        {% for v in expiring_vouchers %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-8 py-6"><span class="text-sm font-black text-[#0b343d]">{{ v.code }}</span></td>
+                            <td class="px-8 py-6"><span class="text-xs font-mono text-gray-500">{{ v.mac_address }}</span></td>
+                            <td class="px-8 py-6"><span class="text-sm text-gray-600">{{ v.activated_at.strftime('%Y-%m-%d %H:%M') if v.activated_at else '-' }}</span></td>
+                            <td class="px-8 py-6"><span class="text-sm font-black text-[#ff5f52]">{{ v.expiry_date.strftime('%Y-%m-%d %H:%M') if v.expiry_date else '-' }}</span></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="px-8 py-12 text-center text-gray-400 font-medium italic">No vouchers expiring soon.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

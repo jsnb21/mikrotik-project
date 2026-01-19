@@ -4,15 +4,17 @@ from . import db, login_manager
 from .models import Admin, Voucher
 from .utils import (
     get_mikrotik_system_stats, 
-    get_mikrotik_active_hotspot_users, 
+    get_all_active_users, 
     get_mikrotik_interface_traffic,
     get_income_stats,
     mikrotik_allow_mac,
-    get_mac_from_active_session
+    get_mac_from_active_session,
+    add_hotspot_user
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import string
 import secrets
+from sqlalchemy import func
 
 bp = Blueprint('main', __name__)
 
@@ -129,72 +131,48 @@ def design_view():
 @bp.route('/activate', methods=['POST'])
 def activate():
     from flask import session
-    code = request.form.get('voucher_code', '').strip().upper()
+    code = request.form.get('voucher_code', '').strip()
     
     # Log incoming activation attempt
-    current_app.logger.info("Activate attempt: code=%s, form_keys=%s, session_has_hotspot=%s", code, list(request.form.keys()), 'hotspot_mac' in session)
+    current_app.logger.info("Activate attempt: code=%s", code)
 
     # Get MAC address from session (passed by MikroTik hotspot), form, or use default
-    mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or request.remote_addr
     
-    # Ensure MAC is persisted in session so we stay in "hotspot mode" on redirect
-    if mac_address:
-         session['hotspot_mac'] = mac_address
-    else:
-         mac_address = '00:00:00:00:00:00'
-    
-    # Basic rate limiting could go here (Redis/memcached) 
-    
-    voucher = Voucher.query.filter_by(code=code).first()
+    voucher = Voucher.query.filter_by(code=code, status='unused').first()
     
     if not voucher:
-        current_app.logger.warning("Activate failed: voucher not found code=%s", code)
-        flash("Invalid/Expired Voucher Code", "error")
-        # Ensure mac_address is available for the template
-        mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
-        return render_template('voucher_login.html', 
-                             mac_address=mac_address,
-                             ip_address=session.get('hotspot_ip'),
-                             link_orig=session.get('hotspot_link_orig'))
-        
-    if voucher.is_activated:
-        current_app.logger.info("Voucher already activated: code=%s, mac=%s, remaining=%s", code, voucher.user_mac_address, voucher.remaining_seconds)
-        # Check if it's the same user re-entering the code?
-        if voucher.user_mac_address == mac_address and voucher.remaining_seconds > 0:
-             session['active_code'] = code # Ensure session is set
-             return redirect(url_for('main.status_page', code=code))
-        
-        flash("Voucher already used or expired", "error")
-        # Ensure mac_address is available for the template
-        mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
-        return render_template('voucher_login.html', 
-                             mac_address=mac_address,
-                             ip_address=session.get('hotspot_ip'),
-                             link_orig=session.get('hotspot_link_orig'))
+        flash('Invalid or used voucher code', 'error')
+        return redirect(url_for('main.login'))
 
-    try:
-        # Activate Session Logic
-        current_app.logger.info("Activating voucher %s for MAC %s", code, mac_address)
-        voucher.activate(mac_address)
+    # Activate in DB
+    now = datetime.now()
+    expiry = now + timedelta(days=voucher.duration_days)
+    
+    voucher.status = 'active'
+    voucher.mac_address = mac_address
+    voucher.activated_at = now
+    voucher.expiry_date = expiry
+    voucher.expires_at = expiry # Keep for compatibility if needed, or remove if model updated fully
+    
+    # Add to MikroTik
+    # Password can be generic as per guide
+    success = add_hotspot_user(
+        name=code,
+        password="p", 
+        profile="Standard", # Default profile
+        comment=f"Expiry: {expiry.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    
+    if success:
         db.session.commit()
-        db.session.refresh(voucher)  # Refresh to ensure object is synced with database
-        current_app.logger.info("Activated voucher %s (developer=%s): activated_at=%s expires_at=%s remaining=%s", voucher.code, voucher.is_developer, voucher.activated_at, voucher.expires_at, voucher.remaining_seconds)
-        
-        # Integration with MikroTik
-        try:
-            mikrotik_allow_mac(mac_address, voucher.remaining_seconds)
-        except Exception:
-            current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
-        
-        session['active_code'] = code # Set cookie
+        flash('Voucher activated successfully! You are connected.', 'success')
+        # Redirect to status page or MikroTik login acting as success
         return redirect(url_for('main.status_page', code=code))
-        
-    except Exception as e:
-        current_app.logger.exception("Error activating voucher %s", code)
+    else:
         db.session.rollback()
-        flash(f"Error activating voucher: {str(e)}", "error")
-        return redirect(url_for('main.index'))
-
+        flash('Failed to activate voucher on Network. Please try again.', 'error')
+        return redirect(url_for('main.login'))
 @bp.route('/status')
 def status_page():
     code = request.args.get('code')
@@ -275,13 +253,25 @@ def admin_dashboard():
             except:
                 pass
     
-    admins = Admin.query.all()
+    # Calculate Revenue (Sum of price for used vouchers)
+    revenue = db.session.query(func.sum(Voucher.price)).filter(Voucher.status != 'unused').scalar() or 0
+    
+    # 5-Day Reminder (Active vouchers expiring in <= 5 days)
+    now = datetime.now()
+    five_days_from_now = now + timedelta(days=5)
+    expiring_vouchers = Voucher.query.filter(
+        Voucher.status == 'active',
+        Voucher.expiry_date <= five_days_from_now,
+        Voucher.expiry_date >= now
+    ).all()
 
     return render_template('admin.html', 
                            system_stats=system_stats,
                            active_users=active_users,
                            traffic=traffic,
                            income_stats=income_stats,
+                           revenue=revenue,
+                           expiring_vouchers=expiring_vouchers,
                            admins=admins,
                            current_user=current_user)
 

@@ -121,6 +121,75 @@ def get_mikrotik_system_stats(api_pool=None):
             except: pass
         
     return mock_data
+def add_hotspot_user(name, password, profile, comment):
+    """Adds a user to MikroTik Hotspot."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        print("[WARNING] Could not connect to MikroTik to add user.")
+        return False
+        
+    try:
+        api = api_pool.get_api()
+        hotspot = api.get_resource('/ip/hotspot/user')
+        # Check if user exists? Usually uniqueness is handled by RouterOS or we check before.
+        # But here we just try to add.
+        hotspot.add(
+            name=name,
+            password=password,
+            profile=profile,
+            comment=comment
+        )
+        api_pool.disconnect()
+        return True
+    except Exception as e:
+        print(f"[MIKROTIK] Add User Error: {e}")
+        if api_pool: 
+            try: api_pool.disconnect()
+            except: pass
+        return False
+
+def get_all_active_users():
+    """Gets all active hotspot users."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return []
+        
+    try:
+        api = api_pool.get_api()
+        active = api.get_resource('/ip/hotspot/active').get()
+        api_pool.disconnect()
+        return active
+    except Exception as e:
+        print(f"[MIKROTIK] Get Active Users Error: {e}")
+        if api_pool: 
+            try: api_pool.disconnect()
+            except: pass
+        return []
+
+def set_hotspot_user_profile(username, profile_name):
+    """Updates a user's profile (e.g., for FUP)."""
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return False
+        
+    try:
+        api = api_pool.get_api()
+        hotspot_user = api.get_resource('/ip/hotspot/user')
+        # Find user by name
+        users = hotspot_user.get(name=username)
+        if users:
+            user_id = users[0]['id']
+            hotspot_user.set(id=user_id, profile=profile_name)
+            api_pool.disconnect()
+            return True
+        api_pool.disconnect()
+        return False
+    except Exception as e:
+        print(f"[MIKROTIK] Set Profile Error: {e}")
+        if api_pool: 
+            try: api_pool.disconnect()
+            except: pass
+        return False
 
 def mikrotik_allow_mac(mac_address, duration_seconds):
     """Authorize a MAC for hotspot: use IP binding with bypassed type for immediate access."""

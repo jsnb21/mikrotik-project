@@ -21,20 +21,58 @@ class Admin(UserMixin, db.Model):
 class Voucher(db.Model):
     __tablename__ = 'vouchers'
 
+
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    duration = db.Column(db.Integer, nullable=False) # Duration in seconds (e.g., 3600 for 1 hour)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # duration_days matches the schema provided, but using Float to support hours/minutes
+    duration_days = db.Column(db.Float, nullable=False) 
+    # data_limit_gb matches schema
+    data_limit_gb = db.Column(db.Float, nullable=False)
+    # price matches schema
+    price = db.Column(db.Float, nullable=False)
+    # status: unused, active, expired
+    status = db.Column(db.String(20), default='unused') 
     
-    # Activation details
+    mac_address = db.Column(db.String(17), nullable=True) # Renamed from user_mac_address to match schema
     activated_at = db.Column(db.DateTime, nullable=True)
-    expires_at = db.Column(db.DateTime, nullable=True)
-    user_mac_address = db.Column(db.String(17), nullable=True)
-    is_developer = db.Column(db.Boolean, default=False)  # Developer code that never expires
+    expiry_date = db.Column(db.DateTime, nullable=True)
+    
+    is_developer = db.Column(db.Boolean, default=False)
 
     @property
     def is_activated(self):
-        return self.activated_at is not None
+        return self.status == 'active'
+
+    @property
+    def duration(self):
+        # Compatibility property if needed, returning seconds
+        return int(self.duration_days * 86400)
+        
+    @property
+    def remaining_seconds(self):
+        if self.status != 'active' or not self.expiry_date:
+            return 0
+        now = datetime.now()
+        rem = (self.expiry_date - now).total_seconds()
+        return max(0, int(rem))
+        
+    # Compatibility Aliases for legacy code
+    @property
+    def user_mac_address(self):
+        return self.mac_address
+
+    @user_mac_address.setter
+    def user_mac_address(self, value):
+        self.mac_address = value
+
+    @property
+    def expires_at(self):
+        return self.expiry_date
+
+    @expires_at.setter
+    def expires_at(self, value):
+        self.expiry_date = value
+
 
     @property
     def remaining_seconds(self):
