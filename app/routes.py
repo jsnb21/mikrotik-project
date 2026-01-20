@@ -9,7 +9,8 @@ from .utils import (
     get_income_stats,
     mikrotik_allow_mac,
     get_mac_from_active_session,
-    add_hotspot_user
+    add_hotspot_user,
+    get_mikrotik_active_hotspot_users
 )
 from datetime import datetime, timezone, timedelta
 import string
@@ -156,10 +157,10 @@ def activate():
     voucher.expires_at = expiry # Keep for compatibility if needed, or remove if model updated fully
     
     # Add to MikroTik
-    # Password can be generic as per guide
+    # Password = voucher code (same as username for easy login)
     success = add_hotspot_user(
         name=code,
-        password="p", 
+        password=code,  # Use voucher code as password
         profile="Standard", # Default profile
         comment=f"Expiry: {expiry.strftime('%Y-%m-%d %H:%M:%S')}"
     )
@@ -265,6 +266,9 @@ def admin_dashboard():
         Voucher.expiry_date >= now
     ).all()
 
+    # Fetch all admins for the dashboard
+    admins = Admin.query.all()
+
     return render_template('admin.html', 
                            system_stats=system_stats,
                            active_users=active_users,
@@ -367,6 +371,106 @@ def test_connection():
     except Exception as e:
         print(f"❌ ERROR in test endpoint: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/api/activate', methods=['POST', 'OPTIONS'])
+def api_activate():
+    """API endpoint for activating vouchers from MikroTik login page.
+    This allows the MikroTik login.html to activate a voucher and create
+    the hotspot user before submitting to MikroTik's login system.
+    """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+    
+    try:
+        data = request.get_json() or {}
+        code = (data.get('voucher_code') or '').strip().upper()
+        mac_address = data.get('mac_address') or request.remote_addr
+        ip_address = data.get('ip_address') or request.remote_addr
+        
+        print(f"[API] Activate request: code={code}, mac={mac_address}, ip={ip_address}")
+        
+        if not code or len(code) < 6:
+            response = jsonify({'success': False, 'message': 'Invalid voucher code'})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 400
+        
+        # Check if voucher exists
+        voucher = Voucher.query.filter_by(code=code).first()
+        
+        if not voucher:
+            response = jsonify({'success': False, 'message': 'Voucher not found'})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 404
+        
+        # Check if already activated
+        if voucher.status == 'active' and voucher.activated_at:
+            # Already active - check if expired
+            if voucher.remaining_seconds > 0:
+                # Still valid, allow login
+                response = jsonify({
+                    'success': True, 
+                    'message': 'Voucher already active',
+                    'remaining_seconds': voucher.remaining_seconds
+                })
+                response.headers.add('Access-Control-Allow-Origin', '*')
+                return response, 200
+            else:
+                response = jsonify({'success': False, 'message': 'Voucher has expired'})
+                response.headers.add('Access-Control-Allow-Origin', '*')
+                return response, 400
+        
+        if voucher.status == 'used':
+            response = jsonify({'success': False, 'message': 'Voucher already used'})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 400
+        
+        # Activate the voucher
+        now = datetime.now()
+        expiry = now + timedelta(days=voucher.duration_days)
+        
+        voucher.status = 'active'
+        voucher.mac_address = mac_address
+        voucher.user_mac_address = mac_address
+        voucher.activated_at = now
+        voucher.expiry_date = expiry
+        voucher.expires_at = expiry
+        
+        # Create MikroTik hotspot user
+        success = add_hotspot_user(
+            name=code,
+            password=code,  # Password = voucher code
+            profile="Standard",
+            comment=f"Expiry: {expiry.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        if success:
+            db.session.commit()
+            print(f"[API] Voucher {code} activated successfully")
+            response = jsonify({
+                'success': True, 
+                'message': 'Voucher activated! You can now login.',
+                'code': code
+            })
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 200
+        else:
+            db.session.rollback()
+            print(f"[API] Failed to create hotspot user for {code}")
+            response = jsonify({'success': False, 'message': 'Network error. Please try again.'})
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 500
+            
+    except Exception as e:
+        print(f"[API] Error: {str(e)}")
+        response = jsonify({'success': False, 'message': 'Server error'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, 500
 
 
 @bp.route('/info')

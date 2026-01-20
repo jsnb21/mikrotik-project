@@ -10,6 +10,8 @@ import secrets
 import string
 import ctypes
 import queue
+import socket
+import subprocess
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -26,6 +28,77 @@ except Exception:
 sys.path.append(os.getcwd())
 from app import create_app, db
 from app.models import Voucher, Admin
+
+
+def get_network_interfaces():
+    """Get all network interfaces with their IP addresses."""
+    interfaces = []
+    try:
+        # Use ip command on Linux
+        result = subprocess.run(['ip', '-4', 'addr', 'show'], capture_output=True, text=True, timeout=5)
+        current_iface = None
+        for line in result.stdout.split('\n'):
+            if ': ' in line and not line.startswith(' '):
+                parts = line.split(': ')
+                if len(parts) >= 2:
+                    current_iface = parts[1].split('@')[0]
+            elif 'inet ' in line and current_iface:
+                ip = line.strip().split()[1].split('/')[0]
+                if ip != '127.0.0.1':
+                    interfaces.append({'name': current_iface, 'ip': ip})
+    except Exception as e:
+        print(f"Error getting interfaces: {e}")
+        # Fallback: try socket method
+        try:
+            hostname = socket.gethostname()
+            ip = socket.gethostbyname(hostname)
+            if ip != '127.0.0.1':
+                interfaces.append({'name': 'default', 'ip': ip})
+        except:
+            pass
+    return interfaces
+
+
+def get_default_gateway():
+    """Get the default gateway IP."""
+    try:
+        result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True, timeout=5)
+        for line in result.stdout.split('\n'):
+            if 'default via' in line:
+                return line.split('via')[1].strip().split()[0]
+    except:
+        pass
+    return None
+
+
+def check_port_available(port):
+    """Check if a port is available for binding."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('0.0.0.0', port))
+            return True
+    except OSError:
+        return False
+
+
+def find_available_port(start_port=5000, max_attempts=100):
+    """Find an available port starting from start_port."""
+    for port in range(start_port, start_port + max_attempts):
+        if check_port_available(port):
+            return port
+    return None
+
+
+def test_mikrotik_connection(host, port=8728):
+    """Test if MikroTik router is reachable."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
+            s.connect((host, port))
+            return True
+    except:
+        return False
+
 
 class IORedirector(object):
     def __init__(self, queue, original_stream):
@@ -120,7 +193,7 @@ class PisonetManager(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self.title("MikroTik Hotspot Manager")
-        self.geometry("1000x650")
+        self.geometry("1000x700")
         self.resizable(False, False)
         try:
             self.iconbitmap("app/static/img/favicon.ico")
@@ -133,6 +206,13 @@ class PisonetManager(ctk.CTk):
         self.server = None
         self.is_server_running = False
         self.profiles_file = 'profiles.json'
+        self.server_port = 5000
+        
+        # Network Info
+        self.network_interfaces = []
+        self.default_gateway = None
+        self.mikrotik_host = os.environ.get('MIKROTIK_HOST', '192.168.88.1')
+        self.refresh_network_info()
         
         # Configure Colors
         self.sidebar_color = "#0b343d"
@@ -331,39 +411,135 @@ class PisonetManager(ctk.CTk):
         except Exception as e:
             print(f"Error saving profiles: {e}")
 
+    def refresh_network_info(self):
+        """Refresh network interface and gateway information."""
+        self.network_interfaces = get_network_interfaces()
+        self.default_gateway = get_default_gateway()
+        
+        print(f"[NETWORK] Detected interfaces:")
+        for iface in self.network_interfaces:
+            print(f"  - {iface['name']}: {iface['ip']}")
+        if self.default_gateway:
+            print(f"[NETWORK] Default gateway: {self.default_gateway}")
+
+    def get_server_urls(self):
+        """Get all URLs where the server is accessible."""
+        urls = [f"http://127.0.0.1:{self.server_port}"]
+        for iface in self.network_interfaces:
+            urls.append(f"http://{iface['ip']}:{self.server_port}")
+        return urls
+
+    def get_hotspot_url(self):
+        """Get the URL that should be configured in MikroTik hotspot."""
+        # Return the first non-localhost IP
+        for iface in self.network_interfaces:
+            return f"http://{iface['ip']}:{self.server_port}"
+        return f"http://127.0.0.1:{self.server_port}"
 
     def start_server(self):
         if self.is_server_running:
             self.stop_server()
             return
 
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting server...")
+        # Find an available port
+        preferred_port = 5000
+        if not check_port_available(preferred_port):
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Port {preferred_port} is in use, searching for available port...")
+            available_port = find_available_port(preferred_port)
+            if available_port is None:
+                print(f"[ERROR] Could not find any available port!")
+                CustomMessageBox("No Port Available", "Could not find any available port between 5000-5100.\nPlease close some applications and try again.", "error")
+                return
+            self.server_port = available_port
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Found available port: {self.server_port}")
+        else:
+            self.server_port = preferred_port
+
+        # Refresh network info before starting
+        self.refresh_network_info()
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting server on port {self.server_port}...")
 
         def run_flask():
-            with self.flask_app.app_context(): db.create_all()
-            from werkzeug.serving import make_server
-            self.server = make_server('0.0.0.0', 5000, self.flask_app)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Server started successfully on http://0.0.0.0:5000")
-            self.server.serve_forever()
+            try:
+                with self.flask_app.app_context():
+                    db.create_all()
+                from werkzeug.serving import make_server
+                self.server = make_server('0.0.0.0', self.server_port, self.flask_app, threaded=True)
+                
+                # Log all accessible URLs
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Server started successfully!")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Accessible at:")
+                for url in self.get_server_urls():
+                    print(f"  → {url}")
+                
+                hotspot_url = self.get_hotspot_url()
+                print(f"\n[MIKROTIK CONFIG] Use this URL in your hotspot walled-garden:")
+                print(f"  → {hotspot_url}")
+                print(f"  → Domain: neuronet.ai should resolve to {self.network_interfaces[0]['ip'] if self.network_interfaces else '???'}\n")
+                
+                self.server.serve_forever()
+            except Exception as e:
+                print(f"[ERROR] Server failed to start: {e}")
+                self.after(0, self._handle_server_error)
 
         self.flask_thread = threading.Thread(target=run_flask, daemon=True)
         self.flask_thread.start()
-        self.is_server_running = True
-        self.draw_status_indicator("#00FF00")
-        self.status_label.configure(text="Server Running: http://127.0.0.1:5000")
         
-        # Update dashboard button state
-        self.frames["DashboardView"].btn_start.configure(state="disabled", text="Running...")
-        self.frames["DashboardView"].btn_stop.configure(state="normal")
-        
-        self.after(2000, lambda: webbrowser.open("http://127.0.0.1:5000/admin"))
+        # Wait a moment then verify server is running
+        self.after(1000, self._verify_server_started)
+
+    def _verify_server_started(self):
+        """Verify the server actually started and update UI."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                s.connect(('127.0.0.1', self.server_port))
+                # Server is running!
+                self.is_server_running = True
+                self.draw_status_indicator("#00FF00")
+                
+                # Show the actual accessible IP in status
+                hotspot_url = self.get_hotspot_url()
+                self.status_label.configure(text=f"Server Running: {hotspot_url}")
+                
+                # Update dashboard
+                if "DashboardView" in self.frames:
+                    self.frames["DashboardView"].btn_start.configure(state="disabled", text="Running...")
+                    self.frames["DashboardView"].btn_stop.configure(state="normal")
+                    self.frames["DashboardView"].update_network_status()
+                
+                # Use dynamic port for admin URL
+                admin_url = f"http://127.0.0.1:{self.server_port}/admin"
+                self.after(1500, lambda: webbrowser.open(admin_url))
+        except:
+            print(f"[ERROR] Server failed to start - port not responding")
+            self._handle_server_error()
+
+    def _handle_server_error(self):
+        """Handle server startup failure."""
+        self.is_server_running = False
+        self.draw_status_indicator("#FF0000")
+        self.status_label.configure(text="Server Failed to Start")
+        if "DashboardView" in self.frames:
+            self.frames["DashboardView"].btn_start.configure(state="normal", text="Start Server")
+            self.frames["DashboardView"].btn_stop.configure(state="disabled")
 
     def stop_server(self):
-        if not self.is_server_running: return
+        if not self.is_server_running:
+            return
         
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Stopping server...")
-        if self.server:
-            self.server.shutdown()
+        
+        def shutdown_server():
+            if self.server:
+                try:
+                    self.server.shutdown()
+                except:
+                    pass
+        
+        # Run shutdown in a thread to avoid blocking
+        threading.Thread(target=shutdown_server, daemon=True).start()
             
         self.is_server_running = False
         self.flask_thread = None
@@ -374,8 +550,10 @@ class PisonetManager(ctk.CTk):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Server stopped.")
         
         # Update dashboard button state
-        self.frames["DashboardView"].btn_start.configure(state="normal", text="Start Server")
-        self.frames["DashboardView"].btn_stop.configure(state="disabled")
+        if "DashboardView" in self.frames:
+            self.frames["DashboardView"].btn_start.configure(state="normal", text="Start Server")
+            self.frames["DashboardView"].btn_stop.configure(state="disabled")
+            self.frames["DashboardView"].update_network_status()
 
 
 class DashboardView(ctk.CTkFrame):
@@ -383,52 +561,163 @@ class DashboardView(ctk.CTkFrame):
         ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
         
-        lb = ctk.CTkLabel(self, text="System Dashboard", font=("Helvetica", 24, "bold"))
-        lb.pack(anchor="w", pady=(0, 20))
-
-        # Controls
-        control_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
-        control_frame.pack(fill=tk.X, padx=2)
+        # Create a scrollable container for all content
+        self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Label inside frame - simulated by label on top padding or just a label inside
-        ctk.CTkLabel(control_frame, text="Services", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+        lb = ctk.CTkLabel(self.scroll_frame, text="System Dashboard", font=("Helvetica", 24, "bold"))
+        lb.pack(anchor="w", pady=(0, 15))
+
+        # ============ NETWORK STATUS PANEL ============
+        network_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#4b7178")
+        network_frame.pack(fill=tk.X, padx=2, pady=(0, 10))
+        
+        network_header = ctk.CTkFrame(network_frame, fg_color="#4b7178", corner_radius=0)
+        network_header.pack(fill=tk.X)
+        ctk.CTkLabel(network_header, text="📡 Network Status & MikroTik Configuration", font=("Arial", 14, "bold"), text_color="white").pack(anchor="w", padx=10, pady=5)
+        
+        network_content = ctk.CTkFrame(network_frame, fg_color="transparent")
+        network_content.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Server IP Info
+        ip_frame = ctk.CTkFrame(network_content, fg_color="transparent")
+        ip_frame.pack(fill=tk.X, pady=2)
+        ctk.CTkLabel(ip_frame, text="Server IP:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(side=tk.LEFT)
+        self.lbl_server_ip = ctk.CTkLabel(ip_frame, text="Not detected", font=("Courier", 12), text_color="#ffd41d")
+        self.lbl_server_ip.pack(side=tk.LEFT, padx=5)
+        
+        # Port Info
+        port_frame = ctk.CTkFrame(network_content, fg_color="transparent")
+        port_frame.pack(fill=tk.X, pady=2)
+        ctk.CTkLabel(port_frame, text="Server Port:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(side=tk.LEFT)
+        self.lbl_port = ctk.CTkLabel(port_frame, text=str(controller.server_port), font=("Courier", 12))
+        self.lbl_port.pack(side=tk.LEFT, padx=5)
+        
+        # MikroTik Hotspot URL (the important one!)
+        hotspot_frame = ctk.CTkFrame(network_content, fg_color="#1a1a2e", corner_radius=5)
+        hotspot_frame.pack(fill=tk.X, pady=8)
+        
+        ctk.CTkLabel(hotspot_frame, text="⚡ MikroTik Hotspot URL:", font=("Arial", 12, "bold"), text_color="#ffd41d").pack(anchor="w", padx=10, pady=(8,2))
+        self.lbl_hotspot_url = ctk.CTkLabel(hotspot_frame, text="Start server to see URL", font=("Courier", 14, "bold"), text_color="#00ff88")
+        self.lbl_hotspot_url.pack(anchor="w", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(hotspot_frame, text="Use this URL in: IP → Hotspot → Server Profiles → Login By → HTTP CHAP", 
+                    font=("Arial", 10), text_color="gray").pack(anchor="w", padx=10, pady=(0, 8))
+        
+        # Copy URL Button
+        btn_copy_url = ctk.CTkButton(hotspot_frame, text="📋 Copy Hotspot URL", command=self.copy_hotspot_url, 
+                                     fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 11, "bold"), width=150)
+        btn_copy_url.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # MikroTik Connection Status
+        mikrotik_frame = ctk.CTkFrame(network_content, fg_color="transparent")
+        mikrotik_frame.pack(fill=tk.X, pady=2)
+        ctk.CTkLabel(mikrotik_frame, text="MikroTik:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(side=tk.LEFT)
+        self.lbl_mikrotik_status = ctk.CTkLabel(mikrotik_frame, text="Checking...", font=("Arial", 12))
+        self.lbl_mikrotik_status.pack(side=tk.LEFT, padx=5)
+        
+        # Refresh Network Button
+        btn_refresh = ctk.CTkButton(network_content, text="🔄 Refresh Network", command=self.refresh_network, 
+                                    fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 11), width=130)
+        btn_refresh.pack(anchor="e", pady=5)
+
+        # ============ SERVER CONTROLS ============
+        control_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#E0E0E0")
+        control_frame.pack(fill=tk.X, padx=2, pady=(0, 10))
+        
+        ctk.CTkLabel(control_frame, text="Server Controls", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
         
         btns_frame = ctk.CTkFrame(control_frame, fg_color="transparent")
         btns_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        self.btn_start = ctk.CTkButton(btns_frame, text="Start Server", command=controller.start_server, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", text_color_disabled="#3d3300", font=("Arial", 12, "bold"))
+        self.btn_start = ctk.CTkButton(btns_frame, text="▶ Start Server", command=controller.start_server, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", text_color_disabled="#3d3300", font=("Arial", 12, "bold"))
         self.btn_start.pack(side=tk.LEFT, padx=5)
 
-        self.btn_stop = ctk.CTkButton(btns_frame, text="Stop Server", command=controller.stop_server, state="disabled", fg_color="#ff5f52", hover_color="#e65549", text_color="white", text_color_disabled="#dcdcdc", font=("Arial", 12, "bold"))
+        self.btn_stop = ctk.CTkButton(btns_frame, text="⏹ Stop Server", command=controller.stop_server, state="disabled", fg_color="#ff5f52", hover_color="#e65549", text_color="white", text_color_disabled="#dcdcdc", font=("Arial", 12, "bold"))
         self.btn_stop.pack(side=tk.LEFT, padx=5)
 
-        ctk.CTkButton(btns_frame, text="Launch Web Admin", command=self.launch_admin, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
+        ctk.CTkButton(btns_frame, text="🌐 Launch Web Admin", command=self.launch_admin, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
 
         self.btn_copy = ctk.CTkButton(btns_frame, text="📋", width=40, command=self.copy_link, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 16))
         self.btn_copy.pack(side=tk.LEFT, padx=5)
-        ToolTip(self.btn_copy, "Copy Link to Clipboard")
+        ToolTip(self.btn_copy, "Copy Admin Link to Clipboard")
 
-        # Logs
-        log_label_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
-        log_label_frame.pack(fill=tk.BOTH, expand=True, pady=20, padx=2)
+        # ============ LOGS ============
+        log_label_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#E0E0E0")
+        log_label_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10), padx=2)
         
-        ctk.CTkLabel(log_label_frame, text="Logs", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(log_label_frame, text="Server Logs", font=("Arial", 14, "bold")).pack(anchor="w", padx=10, pady=5)
         
-        # Using CTkTextbox instead of ScrolledText
-        self.log_area = ctk.CTkTextbox(log_label_frame, height=200)
+        self.log_area = ctk.CTkTextbox(log_label_frame, height=180)
         self.log_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-        self.log_area.insert("0.0", "Ready...\n")
+        self.log_area.insert("0.0", "Ready. Click 'Start Server' to begin.\n")
         self.log_area.configure(state="disabled")
+        
+        # Initial network status update
+        self.after(500, self.update_network_status)
+
+    def update_network_status(self):
+        """Update the network status display."""
+        controller = self.controller
+        
+        # Update Server IP
+        if controller.network_interfaces:
+            ip = controller.network_interfaces[0]['ip']
+            iface = controller.network_interfaces[0]['name']
+            self.lbl_server_ip.configure(text=f"{ip} ({iface})")
+        else:
+            self.lbl_server_ip.configure(text="No network detected!")
+        
+        # Update Port display
+        self.lbl_port.configure(text=str(controller.server_port))
+        
+        # Update Hotspot URL
+        if controller.is_server_running:
+            hotspot_url = controller.get_hotspot_url()
+            self.lbl_hotspot_url.configure(text=hotspot_url, text_color="#00ff88")
+        else:
+            if controller.network_interfaces:
+                ip = controller.network_interfaces[0]['ip']
+                self.lbl_hotspot_url.configure(text=f"http://{ip}:{controller.server_port} (server stopped)", text_color="gray")
+            else:
+                self.lbl_hotspot_url.configure(text="Start server to see URL", text_color="gray")
+        
+        # Check MikroTik connection
+        def check_mikrotik():
+            host = controller.mikrotik_host
+            if test_mikrotik_connection(host):
+                self.after(0, lambda: self.lbl_mikrotik_status.configure(text=f"✓ Connected to {host}", text_color="#00ff88"))
+            else:
+                self.after(0, lambda: self.lbl_mikrotik_status.configure(text=f"✗ Cannot reach {host}", text_color="#ff5f52"))
+        
+        threading.Thread(target=check_mikrotik, daemon=True).start()
+
+    def refresh_network(self):
+        """Refresh network information."""
+        self.controller.refresh_network_info()
+        self.update_network_status()
+        self.controller.show_notification("Network info refreshed!")
+
+    def copy_hotspot_url(self):
+        """Copy the hotspot URL to clipboard."""
+        if self.controller.network_interfaces:
+            url = self.controller.get_hotspot_url()
+            self.controller.clipboard_clear()
+            self.controller.clipboard_append(url)
+            self.controller.update()
+            self.controller.show_notification("Hotspot URL copied!")
+        else:
+            CustomMessageBox("No Network", "No network interface detected.", "error")
 
     def copy_link(self):
         self.controller.clipboard_clear()
-        self.controller.clipboard_append("http://127.0.0.1:5000/admin")
-        self.controller.update() # Required to finalize clipboard
-        self.controller.show_notification("Link has been copied!")
+        self.controller.clipboard_append(f"http://127.0.0.1:{self.controller.server_port}/admin")
+        self.controller.update()
+        self.controller.show_notification("Admin link copied!")
 
     def launch_admin(self):
         if self.controller.is_server_running:
-            webbrowser.open("http://127.0.0.1:5000/admin")
+            webbrowser.open(f"http://127.0.0.1:{self.controller.server_port}/admin")
         else:
             CustomMessageBox("Server Not Running", "Please start the server before launching the web admin.", "error")
 
@@ -691,10 +980,14 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
         
-        ctk.CTkLabel(self, text="Settings", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
+        # Create scrollable frame for all content
+        self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ctk.CTkLabel(self.scroll_frame, text="Settings", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
         
         # Router Configuration Frame
-        config_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        config_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#E0E0E0")
         config_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkLabel(config_frame, text="MikroTik Router Configuration", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
@@ -711,7 +1004,7 @@ class SettingsView(ctk.CTkFrame):
         self.create_entry(form_frame, "WAN Interface:", "MIKROTIK_WAN_INTERFACE", 4)
         
         # Buttons
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkButton(btn_frame, text="Test Connection", command=self.test_connection, 
@@ -720,8 +1013,35 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkButton(btn_frame, text="Save Settings", command=self.save_settings,
                       fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
         
+        # MikroTik Hotspot Setup Helper
+        hotspot_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#ffd41d")
+        hotspot_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        hotspot_header = ctk.CTkFrame(hotspot_frame, fg_color="#ffd41d", corner_radius=0)
+        hotspot_header.pack(fill=tk.X)
+        ctk.CTkLabel(hotspot_header, text="⚡ MikroTik Hotspot Configuration Helper", font=("Arial", 16, "bold"), text_color="black").pack(anchor="w", padx=15, pady=8)
+        
+        hotspot_content = ctk.CTkFrame(hotspot_frame, fg_color="transparent")
+        hotspot_content.pack(fill=tk.X, padx=15, pady=10)
+        
+        ctk.CTkLabel(hotspot_content, text="Run these commands in MikroTik Terminal (Winbox → New Terminal):", 
+                    font=("Arial", 12), text_color="gray").pack(anchor="w", pady=(0, 10))
+        
+        # Commands text area
+        self.mikrotik_commands = ctk.CTkTextbox(hotspot_content, height=200, font=("Courier", 11))
+        self.mikrotik_commands.pack(fill=tk.X, pady=5)
+        
+        cmd_btn_frame = ctk.CTkFrame(hotspot_content, fg_color="transparent")
+        cmd_btn_frame.pack(fill=tk.X, pady=5)
+        
+        ctk.CTkButton(cmd_btn_frame, text="📋 Copy Commands", command=self.copy_mikrotik_commands,
+                      fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        ctk.CTkButton(cmd_btn_frame, text="🔄 Refresh Commands", command=self.refresh_mikrotik_commands,
+                      fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
+        
         # Database Management Frame
-        db_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        db_frame = ctk.CTkFrame(self.scroll_frame, border_width=2, border_color="#E0E0E0")
         db_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkLabel(db_frame, text="Database Management", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
@@ -736,6 +1056,7 @@ class SettingsView(ctk.CTkFrame):
                       fg_color="#ff5f52", hover_color="#e65549", text_color="white", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
         
         self.load_settings()
+        self.refresh_mikrotik_commands()
 
     def create_entry(self, parent, label, key, row, show=None):
         ctk.CTkLabel(parent, text=label, width=150, anchor="w").grid(row=row, column=0, padx=5, pady=5, sticky="w")
@@ -743,6 +1064,112 @@ class SettingsView(ctk.CTkFrame):
         if show: entry.configure(show=show)
         entry.grid(row=row, column=1, padx=5, pady=5, sticky="w")
         self.entries[key] = entry
+    
+    def get_mikrotik_commands(self):
+        """Generate MikroTik commands based on current network configuration."""
+        server_ip = "192.168.88.21"  # Default
+        server_port = self.controller.server_port
+        
+        if self.controller.network_interfaces:
+            server_ip = self.controller.network_interfaces[0]['ip']
+        
+        commands = f"""# ============================================
+# MikroTik Hotspot Configuration for Pisonet
+# Server: {server_ip}:{server_port}
+# ============================================
+
+# STEP 1: Add Walled Garden IP entries (REQUIRED - allows access before login)
+/ip hotspot walled-garden ip add dst-address={server_ip} action=accept comment="Pisonet Server"
+
+# STEP 2: Add Walled Garden host entries
+/ip hotspot walled-garden add dst-host="{server_ip}" action=allow comment="Pisonet IP"
+/ip hotspot walled-garden add dst-host="neuronet.ai" action=allow comment="Pisonet Domain"
+/ip hotspot walled-garden add dst-host="*.neuronet.ai" action=allow comment="Pisonet Subdomain"
+
+# STEP 3: Add DNS static entry (so neuronet.ai resolves to your server)
+/ip dns static add name=neuronet.ai address={server_ip} comment="Pisonet Server"
+
+# STEP 4: Firewall - Allow traffic from hotspot network to server
+# (Change 10.5.50.0/24 to match YOUR hotspot network)
+/ip firewall filter add chain=forward src-address=10.5.50.0/24 dst-address={server_ip} dst-port={server_port} protocol=tcp action=accept comment="Allow Pisonet" place-before=0
+
+# STEP 5: NAT - Enable communication between subnets (if needed)
+/ip firewall nat add chain=srcnat src-address=10.5.50.0/24 dst-address={server_ip} action=masquerade comment="Pisonet NAT"
+
+# ============================================
+# HOTSPOT LOGIN PAGE SETUP (DO IN WINBOX GUI)
+# ============================================
+# 1. Go to: IP → Hotspot → Server Profiles
+# 2. Double-click your profile (e.g., "hsprof1")
+# 3. Go to "Login" tab
+# 4. Set "Login By": check "HTTP CHAP" and "Cookie"
+# 5. Click OK
+#
+# Then modify the hotspot HTML login page:
+# 1. Go to: Files
+# 2. Find hotspot folder (e.g., hotspot/login.html)
+# 3. Edit login.html to redirect to your server:
+#    Add this at the top of login.html:
+#    <meta http-equiv="refresh" content="0;url=http://{server_ip}:{server_port}/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig)">
+
+# ============================================
+# ALTERNATIVE: Set login page via terminal
+# ============================================
+# Upload a custom login.html that redirects to your server
+# Or use this to set the HTML directory:
+# /ip hotspot profile set [find name="hsprof1"] html-directory=hotspot
+
+# ============================================
+# VERIFICATION COMMANDS (Run these to check)
+# ============================================
+
+# Check walled garden entries:
+/ip hotspot walled-garden print
+/ip hotspot walled-garden ip print
+
+# Check DNS entries:
+/ip dns static print
+
+# Check hotspot profile settings:
+/ip hotspot profile print detail
+
+# Check firewall rules:
+/ip firewall filter print where comment~"Pisonet"
+/ip firewall nat print where comment~"Pisonet"
+
+# Test connectivity from router to your server:
+/tool fetch url="http://{server_ip}:{server_port}/" mode=http
+
+# Check what hotspot network is being used:
+/ip hotspot print
+/ip address print
+
+# ============================================
+# TROUBLESHOOTING
+# ============================================
+# If phones still can't connect:
+# 1. Check hotspot network address (might not be 10.5.50.0/24)
+# 2. Run: /ip address print - find the hotspot bridge/interface IP
+# 3. Update firewall rules with correct network
+#
+# To find hotspot client network:
+# /ip hotspot host print
+"""
+        return commands
+
+    def refresh_mikrotik_commands(self):
+        """Refresh the MikroTik commands display."""
+        commands = self.get_mikrotik_commands()
+        self.mikrotik_commands.delete("0.0", tk.END)
+        self.mikrotik_commands.insert("0.0", commands)
+
+    def copy_mikrotik_commands(self):
+        """Copy MikroTik commands to clipboard."""
+        commands = self.get_mikrotik_commands()
+        self.controller.clipboard_clear()
+        self.controller.clipboard_append(commands)
+        self.controller.update()
+        self.controller.show_notification("MikroTik commands copied!")
 
     def load_settings(self):
         # Read .env file manually to populate fields

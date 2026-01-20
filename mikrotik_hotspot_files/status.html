@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
+    <title>Connection Status</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 360px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #11998e, #38ef7d);
+            padding: 30px 20px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 { font-size: 1.5rem; margin-bottom: 5px; }
+        .status-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        .body { padding: 25px; }
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .stat:last-child { border-bottom: none; }
+        .stat-label { color: #888; font-size: 0.9rem; }
+        .stat-value { font-weight: 600; color: #333; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: white;
+            background: #e74c3c;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            margin-top: 20px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .refresh {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="status-icon">✓</div>
+            <h1>You're Connected!</h1>
+            <p>Enjoy your internet access</p>
+        </div>
+        <div class="body">
+            <div class="stat">
+                <span class="stat-label">Username</span>
+                <span class="stat-value">$(username)</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">IP Address</span>
+                <span class="stat-value">$(ip)</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Session Time</span>
+                <span class="stat-value">$(uptime)</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Time Remaining</span>
+                <span class="stat-value">$(session-time-left)</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Downloaded</span>
+                <span class="stat-value">$(bytes-in-nice)</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Uploaded</span>
+                <span class="stat-value">$(bytes-out-nice)</span>
+            </div>
+            
+            <a href="$(link-logout)" class="btn">Disconnect / Logout</a>
+            
+            <p class="refresh">Page refreshes automatically every 60 seconds</p>
+        </div>
+    </div>
+</body>
+</html>
