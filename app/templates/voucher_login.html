@@ -24,7 +24,7 @@
                 {% endif %}
             {% endwith %}
 
-            <form action="{{ url_for('main.activate') }}" method="POST" class="space-y-4">
+            <form action="{{ url_for('main.activate') }}" method="POST" class="space-y-4" id="voucherForm">
                 <div>
                     <label for="voucher_code">
                         Voucher Code
@@ -50,9 +50,20 @@
                 <input type="hidden" name="ip_address" value="{{ ip_address }}">
                 {% endif %}
 
-                <button type="submit" class="btn btn-confirm">
+                <button type="submit" class="btn btn-confirm" id="submitBtn">
                     Connect Now
                 </button>
+
+                <!-- Loading spinner -->
+                <div id="loadingSpinner" class="hidden flex items-center justify-center mt-4">
+                    <div class="inline-flex items-center gap-2">
+                        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-sm font-medium">Processing...</span>
+                    </div>
+                </div>
             </form>
 
             <div class="mt-6 pt-6 border-t border-gray-100">
@@ -76,4 +87,10 @@
 
 <script src="{{ url_for('static', filename='js/notification.js') }}"></script>
 <script src="{{ url_for('static', filename='js/voucher_login.js') }}"></script>
+<script>
+    document.getElementById('voucherForm').addEventListener('submit', function() {
+        document.getElementById('submitBtn').classList.add('hidden');
+        document.getElementById('loadingSpinner').classList.remove('hidden');
+    });
+</script>
 {% endblock %}
