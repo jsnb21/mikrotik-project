@@ -8,8 +8,7 @@ from .utils import (
     get_mikrotik_interface_traffic,
     get_income_stats,
     mikrotik_allow_mac,
-    get_mac_from_active_session,
-    get_mac_from_arp
+    get_mac_from_active_session
 )
 from datetime import datetime, timezone
 import string
@@ -72,6 +71,7 @@ def index():
     mac_address = request.args.get('mac', '') or request.form.get('mac', '')
     ip_address = request.args.get('ip', '') or request.form.get('ip', '')
     link_orig = request.args.get('link-orig', '') or request.form.get('link-orig', '')
+    client_ip = request.remote_addr
     
     # Store in session for use in other routes
     if mac_address:
@@ -79,7 +79,24 @@ def index():
         session['hotspot_ip'] = ip_address
         session['hotspot_link_orig'] = link_orig
     
-    # Check if MAC address has an active voucher (only when coming from hotspot)
+    # Check if user has an active session in cookies
+    if 'active_code' in session:
+        code = session['active_code']
+        voucher = Voucher.query.filter_by(code=code).first()
+        if voucher and voucher.remaining_seconds > 0:
+            current_app.logger.info("Index: Found active code in session, redirecting to status: code=%s", code)
+            return redirect(url_for('main.status_page', code=code))
+        else:
+            # Clean up expired session
+            current_app.logger.info("Index: Active code expired or not found, cleaning up: code=%s", code)
+            session.pop('active_code', None)
+            session.modified = True  # Ensure session changes are saved
+    
+    # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
+    if not mac_address:
+        mac_address = get_mac_from_active_session(client_ip)
+    
+    # Check if MAC address has an active voucher
     if mac_address:
         active_voucher = Voucher.query.filter(
             Voucher.user_mac_address == mac_address,
@@ -87,6 +104,9 @@ def index():
         ).order_by(Voucher.expires_at.desc()).first()
         
         if active_voucher and active_voucher.remaining_seconds > 0:
+            session['active_code'] = active_voucher.code
+            session['hotspot_mac'] = mac_address  # Store MAC in session
+            current_app.logger.info("Index: Redirecting to status: code=%s MAC=%s", active_voucher.code, mac_address)
             return redirect(url_for('main.status_page', code=active_voucher.code))
 
     # If called from MikroTik hotspot, use hotspot template
@@ -106,52 +126,22 @@ def design_view():
                          ip_address="192.168.88.254",
                          link_orig="http://www.google.com")
 
-@bp.route('/manual-login')
-def manual_login():
-    """Route for manual voucher login without MikroTik redirect"""
-    return render_template('voucher_login.html', 
-                         mac_address=None,
-                         ip_address=None,
-                         link_orig=None)
-
 @bp.route('/activate', methods=['POST'])
 def activate():
-    from flask import session, make_response
+    from flask import session
     code = request.form.get('voucher_code', '').strip().upper()
     
-    # Log incoming activation attempt and all available IP information
-    current_app.logger.info("Activate attempt: code=%s, remote_addr=%s, X-Forwarded-For=%s, X-Real-IP=%s", 
-                          code, request.remote_addr, 
-                          request.headers.get('X-Forwarded-For'), 
-                          request.headers.get('X-Real-IP'))
+    # Log incoming activation attempt
+    current_app.logger.info("Activate attempt: code=%s, form_keys=%s, session_has_hotspot=%s", code, list(request.form.keys()), 'hotspot_mac' in session)
 
-    # Get MAC address from session (passed by MikroTik hotspot), form, or lookup from ARP
+    # Get MAC address from session (passed by MikroTik hotspot), form, or use default
     mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
     
-    # If no MAC address, try to look it up from MikroTik ARP table using client IP
-    if not mac_address or mac_address == '00:00:00:00:00:00':
-        # Get real client IP (check proxy headers first, then session, then remote_addr)
-        client_ip = (request.headers.get('X-Forwarded-For') or 
-                    request.headers.get('X-Real-IP') or 
-                    session.get('hotspot_ip') or 
-                    request.remote_addr)
-        if ',' in client_ip:  # X-Forwarded-For can have multiple IPs
-            client_ip = client_ip.split(',')[0].strip()
-        
-        current_app.logger.info("No MAC address provided, looking up IP %s in ARP table", client_ip)
-        mac_address = get_mac_from_arp(client_ip)
-        if mac_address:
-            current_app.logger.info("Found MAC from ARP: %s", mac_address)
-        else:
-            current_app.logger.warning("Could not find MAC for IP %s in ARP table, trying active sessions", client_ip)
-            # Try active hotspot sessions as fallback
-            mac_address = get_mac_from_active_session(client_ip)
-            if not mac_address:
-                mac_address = '00:00:00:00:00:00'
-    
     # Ensure MAC is persisted in session so we stay in "hotspot mode" on redirect
-    if mac_address and mac_address != '00:00:00:00:00:00':
+    if mac_address:
          session['hotspot_mac'] = mac_address
+    else:
+         mac_address = '00:00:00:00:00:00'
     
     # Basic rate limiting could go here (Redis/memcached) 
     
@@ -196,6 +186,7 @@ def activate():
         except Exception:
             current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
         
+        session['active_code'] = code # Set cookie
         return redirect(url_for('main.status_page', code=code))
         
     except Exception as e:
@@ -213,28 +204,6 @@ def status_page():
     voucher = Voucher.query.filter_by(code=code).first_or_404()  # Re-query fresh
     return render_template('status.html', voucher=voucher, is_developer=voucher.is_developer)
 
-@bp.route('/check-status', methods=['POST'])
-def check_status():
-    """Check status by voucher code"""
-    code = request.form.get('voucher_code', '').strip().upper()
-    
-    if not code:
-        flash("Please enter a voucher code", "error")
-        return redirect(url_for('main.index'))
-    
-    voucher = Voucher.query.filter_by(code=code).first()
-    
-    if not voucher:
-        flash("Invalid voucher code", "error")
-        return redirect(url_for('main.index'))
-    
-    if not voucher.is_activated:
-        flash("This voucher has not been activated yet", "error")
-        return redirect(url_for('main.index'))
-    
-    # Redirect to status page
-    return redirect(url_for('main.status_page', code=code))
-
 @bp.route('/end-session', methods=['POST'])
 def end_session():
     """End the current session and clear the active code"""
@@ -251,6 +220,12 @@ def end_session():
             current_app.logger.info("Developer session ended: code=%s", code)
         else:
             current_app.logger.warning("Attempted to end non-developer voucher: code=%s", code)
+    
+    # Clear session
+    session.pop('active_code', None)
+    session.pop('hotspot_mac', None)
+    session.pop('hotspot_ip', None)
+    session.pop('hotspot_link_orig', None)
     
     return redirect(url_for('main.index'))
 
