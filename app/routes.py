@@ -194,6 +194,28 @@ def activate():
         db.session.rollback()
         flash(f"Error activating voucher: {str(e)}", "error")
         return redirect(url_for('main.index'))
+    
+@bp.route('/check-status', methods=['POST'])
+def check_status():
+    """Check status by voucher code"""
+    code = request.form.get('voucher_code', '').strip().upper()
+    
+    if not code:
+        flash("Please enter a voucher code", "error")
+        return redirect(url_for('main.index'))
+    
+    voucher = Voucher.query.filter_by(code=code).first()
+    
+    if not voucher:
+        flash("Invalid voucher code", "error")
+        return redirect(url_for('main.index'))
+    
+    if not voucher.is_activated:
+        flash("This voucher has not been activated yet", "error")
+        return redirect(url_for('main.index'))
+    
+    # Redirect to status page
+    return redirect(url_for('main.status_page', code=code))
 
 @bp.route('/status')
 def status_page():

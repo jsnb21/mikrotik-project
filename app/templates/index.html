@@ -11,10 +11,16 @@
         </div>
 
         <div class="p-8 space-y-6">
-            <div class="p-6 bg-blue-50 text-blue-700 rounded-2xl border-2 border-blue-100 text-center">
-                <p class="font-black uppercase text-xs tracking-widest mb-1">Status</p>
-                <p class="text-sm font-medium">You should be automatically redirected to the login page shortly.</p>
-            </div>
+            <!-- Check Status Form -->
+            <form action="{{ url_for('main.check_status') }}" method="POST" class="space-y-3">
+                <label class="block text-sm font-bold text-gray-700">Check Your Status:</label>
+                <input type="text" name="voucher_code" placeholder="Enter Voucher Code" 
+                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-teal-500 focus:outline-none uppercase"
+                       maxlength="6" required>
+                <button type="submit" class="w-full btn btn-primary py-3 font-black uppercase tracking-widest shadow-xl">
+                    Check Status
+                </button>
+            </form>
             
             <a href="http://192.168.88.254" target="_blank" class="block w-full btn btn-confirm py-4 font-black uppercase tracking-widest text-lg shadow-xl text-center">
                 Manual Login
