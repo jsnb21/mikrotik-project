@@ -55,7 +55,7 @@
                 </button>
 
                 <!-- Loading spinner -->
-                <div id="loadingSpinner" class="hidden flex items-center justify-center mt-4">
+                <div id="loadingSpinner" class="flex items-center justify-center mt-4" style="display: none;">
                     <div class="inline-flex items-center gap-2">
                         <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -90,7 +90,7 @@
 <script>
     document.getElementById('voucherForm').addEventListener('submit', function() {
         document.getElementById('submitBtn').classList.add('hidden');
-        document.getElementById('loadingSpinner').classList.remove('hidden');
+        document.getElementById('loadingSpinner').style.display = 'flex';
     });
 </script>
 {% endblock %}
