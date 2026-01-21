@@ -84,13 +84,10 @@ def index():
         code = session['active_code']
         voucher = Voucher.query.filter_by(code=code).first()
         if voucher and voucher.remaining_seconds > 0:
-            current_app.logger.info("Index: Found active code in session, redirecting to status: code=%s", code)
             return redirect(url_for('main.status_page', code=code))
         else:
             # Clean up expired session
-            current_app.logger.info("Index: Active code expired or not found, cleaning up: code=%s", code)
             session.pop('active_code', None)
-            session.modified = True  # Ensure session changes are saved
     
     # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
     if not mac_address:
@@ -259,21 +256,45 @@ def api_status(code_or_mac):
 @bp.route('/admin')
 @login_required
 def admin_dashboard():
-    # Fetch Analytics from MikroTik - use single connection for all calls
-    from .utils import get_mikrotik_api
-    api_pool = get_mikrotik_api()
+    from .utils import get_mikrotik_api, get_mikrotik_system_stats, get_mikrotik_active_hotspot_users, get_mikrotik_interface_traffic, get_income_stats
+
+    # Fetch Analytics from MikroTik using a SINGLE connection
+    system_stats = None
+    active_users = None
+    traffic = None
+    income_stats = get_income_stats() # Mock data, no connection needed
     
+    # Create single connection pool
+    pool = get_mikrotik_api()
+    api_connection = False 
+    
+    if pool:
+        try:
+            api_connection = pool.get_api()
+        except Exception as e:
+            # print(f"Dashboard data fetch error: {e}")
+            api_connection = False 
+
+    # Fetch data using the established connection OR force mock (False)
     try:
-        system_stats = get_mikrotik_system_stats(api_pool)
-        active_users = get_mikrotik_active_hotspot_users(api_pool)
-        traffic = get_mikrotik_interface_traffic(api_pool=api_pool)
-        income_stats = get_income_stats()
-    finally:
-        if api_pool:
-            try:
-                api_pool.disconnect()
-            except:
-                pass
+        if system_stats is None: system_stats = get_mikrotik_system_stats(api=api_connection)
+        if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=api_connection)
+        if traffic is None: traffic = get_mikrotik_interface_traffic(api=api_connection)
+    except Exception as e:
+        print(f"Error in data gathering: {e}")
+        # Last resort
+        if system_stats is None: system_stats = get_mikrotik_system_stats(api=False)
+        if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=False)
+        if traffic is None: traffic = get_mikrotik_interface_traffic(api=False)
+
+    if pool:
+        try: pool.disconnect()
+        except: pass
+
+    # Ensure we never have None
+    if system_stats is None: system_stats = get_mikrotik_system_stats(api=False)
+    if active_users is None: active_users = get_mikrotik_active_hotspot_users(api=False)
+    if traffic is None: traffic = get_mikrotik_interface_traffic(api=False)
     
     admins = Admin.query.all()
 

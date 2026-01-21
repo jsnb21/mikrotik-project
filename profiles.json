@@ -1,13 +1,5 @@
 [
     {
-        "name": "TEST-2MIN",
-        "price": 0,
-        "validity": "2m",
-        "users": "1",
-        "rate_up": "1M",
-        "rate_down": "2M"
-    },
-    {
         "name": "1H",
         "price": 10,
         "validity": "1h",

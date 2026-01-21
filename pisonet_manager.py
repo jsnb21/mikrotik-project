@@ -454,12 +454,18 @@ class GenerateView(ctk.CTkFrame):
         self.cb_profiles = ctk.CTkComboBox(form_frame, variable=self.profile_var, state="readonly")
         self.cb_profiles.grid(row=0, column=1, sticky="ew", padx=10)
         
-        ctk.CTkLabel(form_frame, text="Qty:").grid(row=1, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Duration (Override):").grid(row=1, column=0, sticky="w", pady=5)
+        self.duration_var = ctk.StringVar(value="Use Profile")
+        self.cb_duration = ctk.CTkComboBox(form_frame, variable=self.duration_var, state="readonly", 
+                                            values=["Use Profile", "2 mins", "30 mins", "1 hour", "1 day"])
+        self.cb_duration.grid(row=1, column=1, sticky="ew", padx=10)
+        
+        ctk.CTkLabel(form_frame, text="Qty:").grid(row=2, column=0, sticky="w", pady=5)
         self.qty_var = ctk.StringVar(value="1")
         # Spinbox does not exist in CTK yet, using Entry or option menu. Basic entry for now.
-        ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=1, column=1, sticky="w", padx=10)
+        ctk.CTkEntry(form_frame, textvariable=self.qty_var, width=60).grid(row=2, column=1, sticky="w", padx=10)
 
-        ctk.CTkButton(form_frame, text="Generate", command=self.generate, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).grid(row=2, column=1, padx=10, pady=15, sticky="e")
+        ctk.CTkButton(form_frame, text="Generate", command=self.generate, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).grid(row=3, column=1, padx=10, pady=15, sticky="e")
 
         # Result
         self.result_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
@@ -485,17 +491,34 @@ class GenerateView(ctk.CTkFrame):
         profile = next((p for p in self.controller.profiles if p['name'] == profile_name), None)
         if not profile: return
         
-        # Parse validity from profile to seconds
-        try:
-            val_str = profile['validity'].lower().strip()
-            total_seconds = 0
-            if val_str.endswith('h'): total_seconds = int(val_str[:-1]) * 3600
-            elif val_str.endswith('d'): total_seconds = int(val_str[:-1]) * 86400
-            elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
-            else: total_seconds = int(val_str) * 60 # Default mins
-        except:
-            CustomMessageBox("Error", "Invalid validity format in profile.", "error")
-            return
+        # Check if duration override is selected
+        duration_override = self.duration_var.get()
+        if duration_override != "Use Profile":
+            # Parse override duration
+            if duration_override == "2 mins":
+                total_seconds = 2 * 60
+            elif duration_override == "30 mins":
+                total_seconds = 30 * 60
+            elif duration_override == "1 hour":
+                total_seconds = 3600
+            elif duration_override == "1 day":
+                total_seconds = 86400
+            else:
+                total_seconds = 2 * 60
+            display_str = duration_override
+        else:
+            # Parse validity from profile to seconds
+            try:
+                val_str = profile['validity'].lower().strip()
+                total_seconds = 0
+                if val_str.endswith('h'): total_seconds = int(val_str[:-1]) * 3600
+                elif val_str.endswith('d'): total_seconds = int(val_str[:-1]) * 86400
+                elif val_str.endswith('m'): total_seconds = int(val_str[:-1]) * 60
+                else: total_seconds = int(val_str) * 60 # Default mins
+            except:
+                CustomMessageBox("Error", "Invalid validity format in profile.", "error")
+                return
+            display_str = profile['validity']
 
         qty = int(self.qty_var.get())
         codes = []
@@ -508,7 +531,7 @@ class GenerateView(ctk.CTkFrame):
                 
                 v = Voucher(code=code, duration=total_seconds)
                 db.session.add(v)
-                codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
+                codes.append(f"{code}  ({profile['name']} - {display_str})")
             db.session.commit()
 
         self.result_text.configure(state="normal")
@@ -705,21 +728,6 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkButton(btn_frame, text="Save Settings", command=self.save_settings,
                       fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
         
-        # Database Management Frame
-        db_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
-        db_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ctk.CTkLabel(db_frame, text="Database Management", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
-        
-        db_btn_frame = ctk.CTkFrame(db_frame, fg_color="transparent")
-        db_btn_frame.pack(fill=tk.X, padx=15, pady=(0, 15))
-        
-        ctk.CTkButton(db_btn_frame, text="Backup Database", command=self.backup_database,
-                      fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
-                      
-        ctk.CTkButton(db_btn_frame, text="Clear Database", command=self.clear_database,
-                      fg_color="#ff5f52", hover_color="#e65549", text_color="white", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
-        
         self.load_settings()
 
     def create_entry(self, parent, label, key, row, show=None):
@@ -865,68 +873,6 @@ class SettingsView(ctk.CTkFrame):
 
         # Run in thread to not freeze UI
         threading.Thread(target=run_test, daemon=True).start()
-
-    def backup_database(self):
-        """Backup the database to instance/backups directory."""
-        try:
-            from shutil import copy2
-            import time
-            
-            db_path = 'instance/pisonet.db'
-            if not os.path.exists(db_path):
-                CustomMessageBox("Error", "Database file not found.", "error")
-                return
-            
-            # Create backups directory if it doesn't exist
-            backup_dir = 'instance/backups'
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            # Create timestamped backup
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            backup_path = os.path.join(backup_dir, f"app_backup_{timestamp}.db")
-            
-            copy2(db_path, backup_path)
-            CustomMessageBox("Success", f"Database backed up successfully!\n\nBackup location:\n{backup_path}", "info")
-            print(f"[BACKUP] Database backed up to {backup_path}")
-        except Exception as e:
-            CustomMessageBox("Error", f"Failed to backup database:\n{str(e)}", "error")
-            print(f"[BACKUP] Error: {str(e)}")
-
-    def clear_database(self):
-        """Clear all vouchers from the database with confirmation."""
-        # Show confirmation dialog
-        root = tk.Tk()
-        root.withdraw()
-        
-        result = messagebox.askyesno(
-            "Confirm Database Clear",
-            "WARNING: This will delete ALL vouchers from the database.\n\n"
-            "This action cannot be undone!\n\n"
-            "Do you want to proceed?"
-        )
-        root.destroy()
-        
-        if not result:
-            return
-        
-        try:
-            with self.controller.flask_app.app_context():
-                from app.models import Voucher
-                
-                # Clear all vouchers
-                voucher_count = Voucher.query.count()
-                Voucher.query.delete()
-                db.session.commit()
-                
-                # Clear the session cache so new queries get fresh data
-                db.session.expunge_all()
-                
-                CustomMessageBox("Success", f"Database cleared!\n\nDeleted {voucher_count} voucher(s).", "info")
-                print(f"[DATABASE] Cleared {voucher_count} voucher(s)")
-        except Exception as e:
-            db.session.rollback()
-            CustomMessageBox("Error", f"Failed to clear database:\n{str(e)}", "error")
-            print(f"[DATABASE] Error: {str(e)}")
 
 if __name__ == "__main__":
     app = PisonetManager()

@@ -1,5 +1,6 @@
 # app/utils.py
 import os
+import socket
 
 # Try to import routeros_api, but make it optional
 try:
@@ -22,6 +23,15 @@ def get_mikrotik_api():
         port = int(os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true'
         
+        # Fast Connectivity Check (0.3 second timeout)
+        # This prevents hanging for long periods if the router is offline.
+        try:
+             sock = socket.create_connection((host, port), timeout=0.3)
+             sock.close()
+        except (socket.timeout, ConnectionRefusedError, OSError):
+             print(f"[DEBUG] Fast Check: {host}:{port} unreachable/slow. Skipping API connection.")
+             return None
+
         # Strip whitespace from credentials (common .env issue)
         username = username.strip()
         password = password.strip()
@@ -48,17 +58,22 @@ def get_mikrotik_api():
         
         for attempt_name, attempt_port, attempt_ssl, plaintext in connection_attempts:
             try:
-                print(f"[DEBUG] Trying connection method: {attempt_name}")
+                # print(f"[DEBUG] Trying connection method: {attempt_name}") 
+                # Note: RouterOsApiPool constructor doesn't connect yet, so we don't print Success here.
+                
                 if plaintext:
-                    api = RouterOsApiPool(host, username=username, password=password, 
+                    pool = RouterOsApiPool(host, username=username, password=password, 
                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
                 else:
-                    api = RouterOsApiPool(host, username=username, password=password, 
+                    pool = RouterOsApiPool(host, username=username, password=password, 
                                          port=attempt_port, use_ssl=attempt_ssl)
-                print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
-                return api
+                
+                # Test the connection immediately with a short timeout if possible, 
+                # but since we can't easily set timeout on the lib, knowing the port is open is our best bet.
+                print(f"[DEBUG] Pool created for: {attempt_name}")
+                return pool
             except Exception as e:
-                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:100]}")
+                print(f"[DEBUG] ✗ Failed to create pool {attempt_name}: {str(e)[:100]}")
                 continue
         
         raise Exception("All connection attempts failed")
@@ -66,11 +81,9 @@ def get_mikrotik_api():
         print(f"[MIKROTIK] Connection error: {str(e)}")
         return None
 
-def get_mikrotik_system_stats(api_pool=None):
+def get_mikrotik_system_stats(api=None):
     """
     Fetch system resource usage from MikroTik.
-    Args:
-        api_pool: Optional existing MikroTik API connection to reuse
     Returns: dict with cpu, memory, uptime, etc.
     Fallback: Returns mock data if connection fails.
     """
@@ -83,16 +96,23 @@ def get_mikrotik_system_stats(api_pool=None):
         "version": "Unknown"
     }
 
-    # Use provided connection or create new one
-    connection_provided = api_pool is not None
-    if not connection_provided:
-        api_pool = get_mikrotik_api()
-    
-    if not api_pool:
+    if api is False:
         return mock_data
 
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            print(f"[MIKROTIK] Error getting API from pool: {e}")
+            try: pool.disconnect()
+            except: pass
+            return mock_data
+
     try:
-        api = api_pool.get_api()
         resources = api.get_resource('/system/resource').get()
         routerboard = api.get_resource('/system/routerboard').get()
         
@@ -114,83 +134,75 @@ def get_mikrotik_system_stats(api_pool=None):
     except Exception as e:
         print(f"[MIKROTIK] Error fetching system stats: {e}")
     finally:
-        # Only disconnect if we created the connection
-        if not connection_provided:
+        if pool:
             try:
-                api_pool.disconnect()
+                pool.disconnect()
             except: pass
         
     return mock_data
 
 def mikrotik_allow_mac(mac_address, duration_seconds):
-    """Authorize a MAC for hotspot: use IP binding with bypassed type for immediate access."""
+    """Authorize a MAC for hotspot: create/update user and add bypass ip-binding."""
     api_pool = get_mikrotik_api()
     if not api_pool:
         print(f"[MIKROTIK] Failed to connect - allowing MAC {mac_address} locally")
         return True
 
-    hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER', 'hotspot1')
+    hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER')  # Optional server name
 
     try:
         api = api_pool.get_api()
+        users = api.get_resource('/ip/hotspot/user')
         ip_bindings = api.get_resource('/ip/hotspot/ip-binding')
 
-        # Use IP binding with 'bypassed' type for immediate access
-        # Note: Time limit enforcement must be handled by the application
-        # since 'bypassed' bindings don't respect hotspot time limits
+        # Build payload for hotspot user
+        payload = {
+            'name': mac_address,
+            'mac-address': mac_address,
+            'limit-uptime': f"{duration_seconds}s",
+        }
+        if hotspot_server:
+            payload['server'] = hotspot_server
+
+        try:
+            response = users.add(**payload)
+            print(f"[MIKROTIK] Allowed MAC {mac_address} for {duration_seconds} seconds - ID: {response}")
+        except Exception as e:
+            msg = str(e)
+            if 'already have user with this name' in msg:
+                # Update existing user instead of failing
+                existing = users.get(name=mac_address)
+                if existing and isinstance(existing, list) and '.id' in existing[0]:
+                    user_id = existing[0]['.id']
+                    update_payload = {'limit-uptime': f"{duration_seconds}s"}
+                    if hotspot_server:
+                        update_payload['server'] = hotspot_server
+                    users.set(id=user_id, **update_payload)
+                    print(f"[MIKROTIK] Updated existing user {mac_address} with new uptime {duration_seconds}s")
+                else:
+                    print(f"[MIKROTIK] User exists but could not fetch id for update: {existing}")
+            else:
+                raise
+
+        # Ensure IP binding bypass so the portal does not prompt again
         try:
             binding = ip_bindings.get(**{'mac-address': mac_address})
             if binding and isinstance(binding, list) and binding:
-                binding_id = binding[0].get('id') or binding[0].get('.id')
+                binding_id = binding[0].get('.id')
                 if binding_id:
-                    ip_bindings.set(id=binding_id, **{'type': 'bypassed', 'server': hotspot_server})
-                    print(f"[MIKROTIK] Updated binding for MAC {mac_address} to bypassed")
+                    ip_bindings.set(id=binding_id, **{'type': 'bypassed'})
                 else:
-                    print(f"[MIKROTIK] Warning: binding record missing id: {binding[0]}")
+                    print(f"[MIKROTIK] Warning: binding record missing .id: {binding[0]}")
             else:
-                ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed', 'server': hotspot_server})
-                print(f"[MIKROTIK] Added bypassed binding for MAC {mac_address}")
+                ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed'})
+            print(f"[MIKROTIK] Added/updated bypass binding for MAC {mac_address}")
         except Exception as e:
-            print(f"[MIKROTIK] Error setting up IP binding: {str(e)}")
+            print(f"[MIKROTIK] Warning: ip-binding bypass failed for {mac_address}: {str(e)}")
 
         return True
     except Exception as e:
         print(f"[MIKROTIK] Error allowing MAC {mac_address}: {str(e)}")
         return True  # Don't fail if API is down
-    finally:
-        try:
-            api_pool.disconnect()
-        except Exception:
-            pass
-
-def mikrotik_revoke_mac(mac_address):
-    """Revoke access for a MAC address by removing IP binding."""
-    api_pool = get_mikrotik_api()
-    if not api_pool:
-        print(f"[MIKROTIK] Failed to connect - cannot revoke MAC {mac_address}")
-        return False
-
-    try:
-        api = api_pool.get_api()
-        ip_bindings = api.get_resource('/ip/hotspot/ip-binding')
-
-        # Remove IP binding to revoke access
-        try:
-            binding = ip_bindings.get(**{'mac-address': mac_address})
-            if binding and isinstance(binding, list) and binding:
-                binding_id = binding[0].get('id') or binding[0].get('.id')
-                if binding_id:
-                    ip_bindings.remove(id=binding_id)
-                    print(f"[MIKROTIK] Revoked access for MAC {mac_address}")
-                    return True
-            print(f"[MIKROTIK] No binding found for MAC {mac_address}")
-            return False
-        except Exception as e:
-            print(f"[MIKROTIK] Error revoking MAC {mac_address}: {str(e)}")
-            return False
-    except Exception as e:
-        print(f"[MIKROTIK] Error connecting to revoke MAC {mac_address}: {str(e)}")
-        return False
     finally:
         try:
             api_pool.disconnect()
@@ -222,11 +234,9 @@ def get_mac_from_active_session(client_ip):
     
     return None
 
-def get_mikrotik_active_hotspot_users(api_pool=None):
+def get_mikrotik_active_hotspot_users(api=None):
     """
     Fetch active hotspot users from MikroTik.
-    Args:
-        api_pool: Optional existing MikroTik API connection to reuse
     Returns: list of dicts.
     Fallback: Returns mock data if connection fails.
     """
@@ -234,16 +244,22 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
         {"user": "user1 (mock)", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
     ]
 
-    # Use provided connection or create new one
-    connection_provided = api_pool is not None
-    if not connection_provided:
-        api_pool = get_mikrotik_api()
-    
-    if not api_pool:
+    if api is False:
         return mock_data
 
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            try: pool.disconnect()
+            except: pass
+            return mock_data
+
     try:
-        api = api_pool.get_api()
         active = api.get_resource('/ip/hotspot/active').get()
         users_list = []
         
@@ -261,10 +277,9 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
     except Exception as e:
         print(f"[MIKROTIK] Error fetching active users: {e}")
     finally:
-        # Only disconnect if we created the connection
-        if not connection_provided:
+        if pool:
             try:
-                api_pool.disconnect()
+                pool.disconnect()
             except: pass
         
     return mock_data
@@ -285,12 +300,9 @@ def get_income_stats():
         "labels_monthly": ["Jan", "Feb", "Mar", "Apr", "May"]
     }
 
-def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
+def get_mikrotik_interface_traffic(interface_name=None, api=None):
     """
     Get current traffic on an interface.
-    Args:
-        interface_name: Optional interface name (default from env var)
-        api_pool: Optional existing MikroTik API connection to reuse
     Fallback: Returns random mock data if connection fails.
     """
     import random
@@ -299,19 +311,25 @@ def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
         "tx_bps": random.randint(1000, 500000)
     }
 
+    if api is False:
+        return mock_data
+
     if not interface_name:
         interface_name = os.getenv('MIKROTIK_WAN_INTERFACE', 'ether1')
 
-    # Use provided connection or create new one
-    connection_provided = api_pool is not None
-    if not connection_provided:
-        api_pool = get_mikrotik_api()
-    
-    if not api_pool:
-        return mock_data
+    pool = None
+    if api is None:
+        pool = get_mikrotik_api()
+        if not pool:
+            return mock_data
+        try:
+            api = pool.get_api()
+        except Exception as e:
+            try: pool.disconnect()
+            except: pass
+            return mock_data
 
     try:
-        api = api_pool.get_api()
         # Using monitor-traffic command
         # Syntax: /interface monitor-traffic [find name=ether1] once
         traffic = api.get_resource('/interface').call('monitor-traffic', {
@@ -328,10 +346,9 @@ def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     except Exception as e:
         print(f"[MIKROTIK] Error fetching traffic for {interface_name}: {e}")
     finally:
-        # Only disconnect if we created the connection
-        if not connection_provided:
+        if pool:
             try:
-                api_pool.disconnect()
+                pool.disconnect()
             except: pass
         
     return mock_data
