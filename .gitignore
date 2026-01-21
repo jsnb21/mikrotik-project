@@ -4309,3 +4309,5 @@ VercelesEnv/Lib/site-packages/customtkinter-5.2.2.dist-info/METADATA
 VercelesEnv/Lib/site-packages/customtkinter-5.2.2.dist-info/LICENSE
 VercelesEnv/Lib/site-packages/customtkinter-5.2.2.dist-info/INSTALLER
 *.pyc
+
+env/
