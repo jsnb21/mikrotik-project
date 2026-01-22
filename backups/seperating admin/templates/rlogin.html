@@ -1,0 +1,56 @@
+$(if http-status == 302)Hotspot login required$(endif)
+$(if http-header == "Location")http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)$(endif)
+<html>
+<head>
+<title>Hotspot Login</title>
+<meta http-equiv="refresh" content="0; url=http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="-1">
+<style>
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #0b343d;
+    color: white;
+}
+.loader {
+    text-align: center;
+    padding: 2rem;
+}
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top: 4px solid #ffd41d;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    margin: 0 auto 30px;
+}
+h2 {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+p {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.875rem;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+<div class="loader">
+    <div class="spinner"></div>
+    <h2>Redirecting to login page...</h2>
+    <p>If you are not redirected, <a href="http://neuronet.ai:5000/?mac=$(mac)&ip=$(ip)&link-orig=$(link-orig-esc)" style="color: #fff; text-decoration: underline;">click here</a></p>
+</div>
+</body>
+</html>
