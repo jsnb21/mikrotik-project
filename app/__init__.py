@@ -1,13 +1,18 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from config import Config
+from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
+# Load environment variables from a .env file before importing Config
+load_dotenv()
+from config import Config
+
 db = SQLAlchemy()
 login_manager = LoginManager()
-login_manager.login_view = 'client.login'
+# Send unauthorized users to the admin login page
+login_manager.login_view = 'main.login'
 scheduler = None
 
 def check_expired_vouchers():

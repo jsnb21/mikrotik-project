@@ -12,7 +12,7 @@ import secrets
 def check_admin_access():
     """Ensure only logged-in admins can access admin routes"""
     if not current_user.is_authenticated:
-        return redirect(url_for('admin.login'))
+        return redirect(url_for('main.login'))
 
 
 @admin_bp.route('/')
@@ -22,7 +22,8 @@ def dashboard():
         get_mikrotik_system_stats, 
         get_mikrotik_active_hotspot_users, 
         get_mikrotik_interface_traffic, 
-        get_income_stats
+        get_income_stats,
+        get_mikrotik_health
     )
     
     api_pool = get_mikrotik_api()
@@ -30,10 +31,38 @@ def dashboard():
         system_stats = get_mikrotik_system_stats(api_pool)
         active_users = get_mikrotik_active_hotspot_users(api_pool)
         traffic = get_mikrotik_interface_traffic(api_pool=api_pool)
+        health = get_mikrotik_health(api_pool)
         income_stats = get_income_stats()
     finally:
         if api_pool:
             pass
+
+    # Fallback: if RouterOS active list is empty, use locally activated vouchers with time remaining
+    if not active_users:
+        db_active_users = []
+        vouchers = Voucher.query.filter(
+            Voucher.activated_at != None,
+            Voucher.expires_at != None,
+            Voucher.user_mac_address != None
+        ).all()
+        for v in vouchers:
+            if v.remaining_seconds > 0:
+                secs = v.remaining_seconds
+                hours, rem = divmod(secs, 3600)
+                minutes, _ = divmod(rem, 60)
+                time_left = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+                db_active_users.append({
+                    "user": v.code,
+                    "mac": v.user_mac_address,
+                    "uptime": "Activated",
+                    "bytes_in": 0,
+                    "bytes_out": 0,
+                    "time_left": time_left
+                })
+        active_users = db_active_users
+
+    # Treat mock uptime marker as disconnected
+    connection_ok = system_stats.get('uptime') != 'Offline (Mock)'
     
     admins = Admin.query.all()
     return render_template('dashboard.html', 
@@ -41,6 +70,8 @@ def dashboard():
                            active_users=active_users,
                            traffic=traffic,
                            income_stats=income_stats,
+                           health=health,
+                           connection_ok=connection_ok,
                            admins=admins,
                            current_user=current_user)
 

@@ -10,57 +10,77 @@ except ImportError:
     print("[WARNING] routeros_api not available. MikroTik API will be mocked.")
 
 def get_mikrotik_api():
-    """Connect to MikroTik RouterOS API"""
+    """Connect to MikroTik RouterOS API.
+    Prefers Flask app config if available; falls back to environment variables.
+    """
     if not ROUTEROS_AVAILABLE:
         return None
-        
+
     try:
-        # Accept both MIKROTIK_USERNAME and the older MIKROTIK_USER env var to avoid misconfigurations
-        host = os.getenv('MIKROTIK_HOST', '192.168.88.1')
-        username = os.getenv('MIKROTIK_USERNAME') or os.getenv('MIKROTIK_USER', 'admin')
-        password = os.getenv('MIKROTIK_PASSWORD', '')
-        port = int(os.getenv('MIKROTIK_PORT', 8728))
-        use_ssl = os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true'
-        
-        # Strip whitespace from credentials (common .env issue)
-        username = username.strip()
-        password = password.strip()
-        
+        # Prefer Flask app config when running inside app context
+        host = None
+        username = None
+        password = None
+        port = None
+        use_ssl = None
+
+        try:
+            from flask import current_app, has_app_context
+            if has_app_context():
+                cfg = current_app.config
+                host = cfg.get('MIKROTIK_HOST')
+                # Support both new and legacy keys
+                username = cfg.get('MIKROTIK_USERNAME') or cfg.get('MIKROTIK_USER')
+                password = cfg.get('MIKROTIK_PASSWORD')
+                port = cfg.get('MIKROTIK_PORT')
+                use_ssl = cfg.get('MIKROTIK_USE_SSL')
+        except Exception:
+            # Not in a Flask context; will use env vars
+            pass
+
+        # Fallback to environment variables if config missing
+        host = host or os.getenv('MIKROTIK_HOST', '192.168.88.1')
+        username = username or os.getenv('MIKROTIK_USERNAME') or os.getenv('MIKROTIK_USER', 'admin')
+        password = password or os.getenv('MIKROTIK_PASSWORD', '')
+        port = int(port or os.getenv('MIKROTIK_PORT', 8728))
+        use_ssl = bool(use_ssl) if use_ssl is not None else (os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true')
+
+        # Strip accidental whitespace from credentials
+        username = (username or '').strip()
+        password = (password or '').strip()
+
         # Show password hint for debugging (first char + *** + last char)
         pwd_hint = f"{password[0]}***{password[-1]}" if len(password) > 2 else "***"
         print(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, password={pwd_hint} (length={len(password)})")
-        
-        # Try API-SSL first (port 8729) if regular port fails
+
+        # Connection strategies
         connection_attempts = []
-        
-        # Attempt 1: Plaintext login first (most reliable for RouterOS API)
+        # Attempt 1: Plaintext login (most reliable for RouterOS API)
         connection_attempts.append(('plaintext', port, use_ssl, True))
-        
-        # Attempt 2: Try challenge-response (normal)
+        # Attempt 2: Challenge-response
         if not use_ssl:
             connection_attempts.append(('normal', port, False, False))
         else:
             connection_attempts.append(('ssl', port, True, False))
-            
-        # Attempt 3: Try API-SSL on 8729 as fallback
+        # Attempt 3: API-SSL default port fallback
         if port == 8728:
             connection_attempts.append(('ssl-8729', 8729, True, False))
-        
+
         for attempt_name, attempt_port, attempt_ssl, plaintext in connection_attempts:
             try:
                 print(f"[DEBUG] Trying connection method: {attempt_name}")
                 if plaintext:
-                    api = RouterOsApiPool(host, username=username, password=password, 
-                                         port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
+                    api = RouterOsApiPool(host, username=username, password=password,
+                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
                 else:
-                    api = RouterOsApiPool(host, username=username, password=password, 
-                                         port=attempt_port, use_ssl=attempt_ssl)
+                    api = RouterOsApiPool(host, username=username, password=password,
+                                          port=attempt_port, use_ssl=attempt_ssl)
                 print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
                 return api
             except Exception as e:
-                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:100]}")
+                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:200]}")
                 continue
-        
+
         raise Exception("All connection attempts failed")
     except Exception as e:
         print(f"[MIKROTIK] Connection error: {str(e)}")
@@ -230,9 +250,7 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
     Returns: list of dicts.
     Fallback: Returns mock data if connection fails.
     """
-    mock_data = [
-        {"user": "user1 (mock)", "mac": "00:11:22:33:44:55", "uptime": "1h 30m", "bytes_in": 1024000, "bytes_out": 500000, "time_left": "30m"},
-    ]
+    mock_data = []
 
     # Use provided connection or create new one
     connection_provided = api_pool is not None
@@ -284,6 +302,39 @@ def get_income_stats():
         "labels_daily": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
         "labels_monthly": ["Jan", "Feb", "Mar", "Apr", "May"]
     }
+
+def get_mikrotik_health(api_pool=None):
+    """Fetch system health (temperature/voltage). Returns dict with optional temperature."""
+    mock = {"temperature": None, "voltage": None}
+
+    connection_provided = api_pool is not None
+    if not connection_provided:
+        api_pool = get_mikrotik_api()
+    if not api_pool:
+        return mock
+
+    try:
+        api = api_pool.get_api()
+        health_res = api.get_resource('/system/health').get()
+        if health_res:
+            first = health_res[0]
+            # RouterOS uses either 'temperature' or 'board-temperature'
+            temp = first.get('temperature') or first.get('board-temperature')
+            voltage = first.get('voltage') or first.get('board-voltage')
+            return {
+                "temperature": temp,
+                "voltage": voltage,
+            }
+    except Exception as e:
+        print(f"[MIKROTIK] Error fetching health: {e}")
+    finally:
+        if not connection_provided:
+            try:
+                api_pool.disconnect()
+            except:  # noqa: E722
+                pass
+
+    return mock
 
 def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     """
