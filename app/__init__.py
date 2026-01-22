@@ -7,7 +7,7 @@ import atexit
 
 db = SQLAlchemy()
 login_manager = LoginManager()
-login_manager.login_view = 'main.login'
+login_manager.login_view = 'client.login'
 scheduler = None
 
 def check_expired_vouchers():
@@ -86,9 +86,13 @@ def create_app(config_class=Config):
             # Shutdown scheduler when app exits
             atexit.register(lambda: scheduler.shutdown())
 
-    # Register Blueprint
+    # Register Blueprints
     from .routes import bp as main_bp
+    from .admin import admin_bp
+    from .client import client_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(client_bp)
 
     return app
 
