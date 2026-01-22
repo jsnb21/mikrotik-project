@@ -23,7 +23,8 @@ def dashboard():
         get_mikrotik_active_hotspot_users, 
         get_mikrotik_interface_traffic, 
         get_income_stats,
-        get_mikrotik_health
+        get_mikrotik_health,
+        get_server_stats
     )
     
     api_pool = get_mikrotik_api()
@@ -33,6 +34,7 @@ def dashboard():
         traffic = get_mikrotik_interface_traffic(api_pool=api_pool)
         health = get_mikrotik_health(api_pool)
         income_stats = get_income_stats()
+        server_stats = get_server_stats()
     finally:
         if api_pool:
             pass
@@ -71,6 +73,7 @@ def dashboard():
                            traffic=traffic,
                            income_stats=income_stats,
                            health=health,
+                           server_stats=server_stats,
                            connection_ok=connection_ok,
                            admins=admins,
                            current_user=current_user)

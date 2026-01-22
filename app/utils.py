@@ -340,6 +340,26 @@ def get_mikrotik_health(api_pool=None):
 
     return mock
 
+
+def get_server_stats():
+    """Get server PC statistics. Currently returns mock data for Raspberry Pi 4."""
+    # Mock data for Raspberry Pi 4
+    mock_data = {
+        "model": "Raspberry Pi 4 Model B",
+        "cpu_model": "Quad-core Cortex-A72 (ARM v8) 64-bit SoC @ 1.5GHz",
+        "cpu_usage": 12.5,
+        "cpu_cores": 4,
+        "total_memory": 4096,  # 4GB RAM in MB
+        "used_memory": 1024,
+        "free_memory": 3072,
+        "uptime": "2d 14h 32m",
+        "temperature": "48.2°C",
+        "os": "Raspberry Pi OS (64-bit)",
+        "kernel": "Linux 6.1.21-v8+"
+    }
+    
+    return mock_data
+
 def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     """
     Get current traffic on an interface.

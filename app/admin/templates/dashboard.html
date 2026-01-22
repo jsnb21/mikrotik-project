@@ -71,45 +71,56 @@
             </div>
         </div>
 
-        <!-- System Info Grid -->
-        <div class="bg-white rounded border border-gray-200 p-6 mb-8">
-            <h2 class="text-lg font-bold text-[#0b343d] uppercase mb-6">System Info</h2>
+        <!-- Router Info -->
+        <div class="bg-white rounded border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-bold text-[#0b343d] uppercase mb-6">Router</h2>
             <div class="space-y-4">
-                <!-- Router Name -->
+                <!-- Router Model -->
                 <div class="flex items-center justify-between pb-4 border-b border-gray-200">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                             <span class="text-green-600 font-bold">🖧</span>
                         </div>
-                        <span class="text-gray-700 font-medium">Router Name</span>
+                        <span class="text-gray-700 font-medium">Model</span>
                     </div>
                     <span class="text-gray-900 font-bold">{{ system_stats.board_name | default('N/A') }}</span>
                 </div>
 
-                <!-- Machine Uptime -->
+                <!-- Router Uptime -->
                 <div class="flex items-center justify-between pb-4 border-b border-gray-200">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                             <span class="text-blue-600 font-bold">⏱</span>
                         </div>
-                        <span class="text-gray-700 font-medium">Machine Uptime</span>
+                        <span class="text-gray-700 font-medium">Uptime</span>
                     </div>
                     <span class="text-gray-900 font-bold">{{ system_stats.uptime | default('0s') }}</span>
                 </div>
 
-                <!-- Total Data Usage -->
+                <!-- Router Memory -->
                 <div class="flex items-center justify-between pb-4 border-b border-gray-200">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                            <span class="text-red-600 font-bold">📊</span>
+                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <span class="text-purple-600 font-bold">💾</span>
                         </div>
-                        <span class="text-gray-700 font-medium">Total Data Usage</span>
+                        <span class="text-gray-700 font-medium">Memory</span>
                     </div>
                     <span class="text-gray-900 font-bold">{{ (system_stats.free_memory | default(0)) // 1048576 }} / {{ (system_stats.total_memory | default(0)) // 1048576 }} MB</span>
                 </div>
 
-                <!-- Temperature -->
+                <!-- Router CPU -->
                 <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
+                            <span class="text-cyan-600 font-bold">⚙️</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">CPU Load</span>
+                    </div>
+                    <span class="text-gray-900 font-bold">{{ system_stats.cpu_load | default(0) }}%</span>
+                </div>
+
+                <!-- Router Temperature -->
+                <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
                             <span class="text-orange-600 font-bold">🌡</span>
@@ -118,7 +129,78 @@
                     </div>
                     <span class="text-gray-900 font-bold">{{ health.temperature or '—' }}</span>
                 </div>
+            </div>
+        </div>
 
+        <!-- Server PC Info -->
+        <div class="bg-white rounded border border-gray-200 p-6 mb-8">
+            <h2 class="text-lg font-bold text-[#0b343d] uppercase mb-6">Server PC</h2>
+            <div class="space-y-4">
+                <!-- Server Model -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <span class="text-green-600 font-bold">🖥</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">Model</span>
+                    </div>
+                    <span class="text-gray-900 font-bold text-right">{{ server_stats.model | default('N/A') }}</span>
+                </div>
+
+                <!-- Server CPU -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                            <span class="text-indigo-600 font-bold">🔧</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">CPU</span>
+                    </div>
+                    <span class="text-gray-900 font-bold text-right text-sm">{{ server_stats.cpu_model | default('N/A') }}</span>
+                </div>
+
+                <!-- Server Uptime -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span class="text-blue-600 font-bold">⏱</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">Uptime</span>
+                    </div>
+                    <span class="text-gray-900 font-bold">{{ server_stats.uptime | default('0s') }}</span>
+                </div>
+
+                <!-- Server Memory -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <span class="text-purple-600 font-bold">💾</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">Memory</span>
+                    </div>
+                    <span class="text-gray-900 font-bold">{{ server_stats.used_memory | default(0) }} / {{ server_stats.total_memory | default(0) }} MB</span>
+                </div>
+
+                <!-- Server CPU Usage -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
+                            <span class="text-cyan-600 font-bold">⚙️</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">CPU Usage</span>
+                    </div>
+                    <span class="text-gray-900 font-bold">{{ server_stats.cpu_usage | default(0) }}%</span>
+                </div>
+
+                <!-- Server Temperature -->
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                            <span class="text-orange-600 font-bold">🌡</span>
+                        </div>
+                        <span class="text-gray-700 font-medium">Temperature</span>
+                    </div>
+                    <span class="text-gray-900 font-bold">{{ server_stats.temperature | default('—') }}</span>
+                </div>
             </div>
         </div>
 
