@@ -184,7 +184,9 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
             pass
 
 def mikrotik_revoke_mac(mac_address):
-    """Revoke access for a MAC address by removing IP binding."""
+    """Revoke access for a MAC address by removing IP binding.
+    Returns True if binding was found and removed, or if MAC not in RouterOS (already gone).
+    """
     api_pool = get_mikrotik_api()
     if not api_pool:
         print(f"[MIKROTIK] Failed to connect - cannot revoke MAC {mac_address}")
@@ -203,8 +205,10 @@ def mikrotik_revoke_mac(mac_address):
                     ip_bindings.remove(id=binding_id)
                     print(f"[MIKROTIK] Revoked access for MAC {mac_address}")
                     return True
-            print(f"[MIKROTIK] No binding found for MAC {mac_address}")
-            return False
+            # Binding not found in RouterOS - it was already removed or never existed
+            # This is OK, just log and return True (consider it revoked)
+            print(f"[MIKROTIK] MAC {mac_address} not found in bindings (already revoked or expired)")
+            return True
         except Exception as e:
             print(f"[MIKROTIK] Error revoking MAC {mac_address}: {str(e)}")
             return False
