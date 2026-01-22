@@ -81,7 +81,7 @@ def create_app(config_class=Config):
                             id='check_expired_vouchers',
                             replace_existing=True)
             scheduler.start()
-            print("[SCHEDULER] Started automatic voucher expiration monitor (every 15 seconds)")
+            print("[SCHEDULER] Started automatic voucher expiration monitor (every 30 seconds)")
             
             # Shutdown scheduler when app exits
             atexit.register(lambda: scheduler.shutdown())
