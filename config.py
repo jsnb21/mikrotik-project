@@ -3,6 +3,10 @@ import os
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string'
     
+    # Trusted Hosts Configuration (Flask security)
+    TRUSTED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+    SERVER_NAME = None  # Allow any host
+    
     # Database
     # Default to SQLite for local development, can be switched to PostgreSQL
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///pisonet.db'

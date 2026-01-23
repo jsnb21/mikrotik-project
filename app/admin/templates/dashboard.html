@@ -1,30 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container mx-auto p-4 md:p-6">
-    <!-- Header Area -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <div>
-            <h1 class="text-3xl font-bold text-[#0b343d] uppercase">Network Dashboard</h1>
-            <p class="text-gray-600 text-sm">Monitoring MikroTik Router via ROS API</p>
-        </div>
-        <!-- Server Control Buttons -->
-        <div class="flex flex-wrap gap-2">
-            <button id="btn-restart" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded transition" onclick="controlServer('restart')">
-                🔄 Restart
-            </button>
-            <button id="btn-stop" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded transition" onclick="controlServer('stop')">
-                ⏹ Stop
-            </button>
-            <button id="btn-start" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded transition" onclick="controlServer('start')">
-                ▶ Start
-            </button>
+<div class="min-h-screen bg-gray-100">
+    <!-- Header -->
+    <div class="bg-white shadow-sm border-b border-gray-200 p-4 md:p-6">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-[#0b343d] uppercase">Network Dashboard</h1>
+                <p class="text-gray-600 text-sm">Monitoring MikroTik Router via ROS API</p>
+            </div>
+            <!-- Server Control Buttons -->
+            <div class="flex flex-wrap gap-2">
+                <button id="btn-restart" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded transition" onclick="controlServer('restart')">
+                    🔄 Restart
+                </button>
+                <button id="btn-stop" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded transition" onclick="controlServer('stop')">
+                    ⏹ Stop
+                </button>
+                <button id="btn-start" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded transition" onclick="controlServer('start')">
+                    ▶ Start
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Connection Alert -->
     {% if not connection_ok %}
-    <div class="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg flex items-start gap-3">
+    <div class="mx-4 md:mx-6 mt-4 p-4 bg-red-50 border border-red-300 rounded-lg flex items-start gap-3">
         <svg class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
         </svg>
@@ -35,275 +37,400 @@
     </div>
     {% endif %}
 
-    <!-- Network Tab -->
-    <div id="content-network" class="tab-content transition-opacity duration-300">
-        <!-- Sales Summary Cards -->
-        <div class="bg-white border border-gray-200 rounded p-6 mb-8">
-            <!-- Daily Sales -->
-            <div class="pb-6 mb-6 border-b border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-3">Daily Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-[#0b343d]">₱{{ income_stats.earned_today | default(0) }}</p>
-                    <p class="text-xs text-gray-500">Your Daily Income</p>
+    <!-- Main Content -->
+    <div class="flex flex-col md:flex-row p-4 md:p-6 gap-6 max-w-7xl mx-auto">
+        <!-- Left Sidebar -->
+        <div class="w-full md:w-64 flex-shrink-0">
+            <div class="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden sticky top-6">
+                <div class="bg-gradient-to-r from-[#0b343d] to-[#0f4d5e] p-4">
+                    <h2 class="text-white font-bold uppercase text-sm">Dashboard</h2>
                 </div>
-            </div>
-
-            <!-- Weekly Sales -->
-            <div class="pb-6 mb-6 border-b border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-3">Weekly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-[#ffd41d]">₱{{ income_stats.weekly | default(0) }}</p>
-                    <p class="text-xs text-gray-500">Your Weekly Income</p>
-                </div>
-            </div>
-
-            <!-- Monthly Sales -->
-            <div class="pb-6 mb-6 border-b border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-3">Monthly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-pink-600">₱{{ income_stats.earned_month | default(0) }}</p>
-                    <p class="text-xs text-gray-500">Your Monthly Income</p>
-                </div>
-            </div>
-
-            <!-- Yearly Sales -->
-            <div class="pb-6 mb-6 border-b border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-3">Yearly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-teal-600">₱{{ income_stats.earned_year | default(0) }}</p>
-                    <p class="text-xs text-gray-500">Your Yearly Income</p>
-                </div>
-            </div>
-
-            <!-- Vendo Total Sales -->
-            <div class="text-center">
-                <h2 class="text-sm text-gray-600 uppercase font-bold mb-4">Vendo Total Sales</h2>
-                <p class="text-5xl font-bold text-[#0b343d]">₱{{ income_stats.earned_year | default(0) }}</p>
-                <p class="text-gray-600 text-sm mt-2">Total Income</p>
+                <nav class="divide-y divide-gray-200">
+                    <button onclick="switchCategory('overview')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2 active" data-category="overview">
+                        <span>📊</span> Overview
+                    </button>
+                    <button onclick="switchCategory('sales')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="sales">
+                        <span>💰</span> Sales & Income
+                    </button>
+                    <button onclick="switchCategory('router')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="router">
+                        <span>🖧</span> Router Info
+                    </button>
+                    <button onclick="switchCategory('server')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="server">
+                        <span>🖥</span> Server Hardware
+                    </button>
+                    <button onclick="switchCategory('users')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="users">
+                        <span>👥</span> Active Users
+                    </button>
+                </nav>
             </div>
         </div>
 
-        <!-- Router Info -->
-        <div class="bg-white rounded border border-gray-200 p-6 mb-6">
-            <h2 class="text-lg font-bold text-[#0b343d] uppercase mb-6">Router</h2>
-            <div class="space-y-4">
-                <!-- Router Model -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                            <span class="text-green-600 font-bold">🖧</span>
+        <!-- Main Content Area -->
+        <div class="flex-1 min-w-0">
+
+            <!-- Overview Section -->
+            <div id="category-overview" class="category-content">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">System Overview</h2>
+                
+                <!-- Quick Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <!-- Online Users Card -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Online Users</p>
+                                <p class="text-3xl font-bold text-[#0b343d]">{{ active_users|length }}</p>
+                            </div>
+                            <span class="text-4xl">👥</span>
                         </div>
-                        <span class="text-gray-700 font-medium">Model</span>
+                        <span class="w-3 h-3 rounded-full {% if active_users|length > 0 %}bg-green-500{% else %}bg-gray-400{% endif %} inline-block mt-2"></span>
                     </div>
-                    <span class="text-gray-900 font-bold">{{ system_stats.board_name | default('N/A') }}</span>
+
+                    <!-- Daily Income Card -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Daily Income</p>
+                                <p class="text-3xl font-bold text-[#0b343d]">₱{{ income_stats.earned_today | default(0) }}</p>
+                            </div>
+                            <span class="text-4xl">📈</span>
+                        </div>
+                    </div>
+
+                    <!-- Router Status Card -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Router Status</p>
+                                <p class="text-xl font-bold {% if connection_ok %}text-green-600{% else %}text-red-600{% endif %}">{% if connection_ok %}🟢 Online{% else %}🔴 Offline{% endif %}</p>
+                            </div>
+                            <span class="text-4xl">🖧</span>
+                        </div>
+                    </div>
+
+                    <!-- Server Status Card -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm font-medium">Server CPU</p>
+                                <p class="text-3xl font-bold text-[#0b343d]">{{ server_stats.cpu_usage | default(0) }}%</p>
+                            </div>
+                            <span class="text-4xl">🖥</span>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Router Uptime -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                            <span class="text-blue-600 font-bold">⏱</span>
+                <!-- Router and Server Side by Side -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Router Quick Stats -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                        <h3 class="text-lg font-bold text-[#0b343d] mb-4 uppercase">🖧 Router Quick Stats</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">Model</span>
+                                <span class="text-gray-900 font-bold">{{ system_stats.board_name | default('N/A') }}</span>
+                            </div>
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">CPU Load</span>
+                                <span class="text-gray-900 font-bold">{{ system_stats.cpu_load | default(0) }}%</span>
+                            </div>
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">Memory</span>
+                                <span class="text-gray-900 font-bold">{{ (system_stats.free_memory | default(0)) // 1048576 }} / {{ (system_stats.total_memory | default(0)) // 1048576 }} MB</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-700 font-medium">Uptime</span>
+                                <span class="text-gray-900 font-bold">{{ system_stats.uptime | default('0s') }}</span>
+                            </div>
                         </div>
-                        <span class="text-gray-700 font-medium">Uptime</span>
                     </div>
-                    <span class="text-gray-900 font-bold">{{ system_stats.uptime | default('0s') }}</span>
-                </div>
 
-                <!-- Router Memory -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                            <span class="text-purple-600 font-bold">💾</span>
+                    <!-- Server Quick Stats -->
+                    <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                        <h3 class="text-lg font-bold text-[#0b343d] mb-4 uppercase">🖥 Server Quick Stats</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">Model</span>
+                                <span class="text-gray-900 font-bold text-sm">{{ server_stats.model | default('N/A') }}</span>
+                            </div>
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">CPU Usage</span>
+                                <span class="text-gray-900 font-bold">{{ server_stats.cpu_usage | default(0) }}%</span>
+                            </div>
+                            <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                                <span class="text-gray-700 font-medium">Memory</span>
+                                <span class="text-gray-900 font-bold">{{ server_stats.used_memory | default(0) }} / {{ server_stats.total_memory | default(0) }} MB</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-700 font-medium">Temperature</span>
+                                <span class="text-gray-900 font-bold">{{ server_stats.temperature | default('—') }}</span>
+                            </div>
                         </div>
-                        <span class="text-gray-700 font-medium">Memory</span>
                     </div>
-                    <span class="text-gray-900 font-bold">{{ (system_stats.free_memory | default(0)) // 1048576 }} / {{ (system_stats.total_memory | default(0)) // 1048576 }} MB</span>
-                </div>
-
-                <!-- Router CPU -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
-                            <span class="text-cyan-600 font-bold">⚙️</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">CPU Load</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ system_stats.cpu_load | default(0) }}%</span>
-                </div>
-
-                <!-- Router Temperature -->
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                            <span class="text-orange-600 font-bold">🌡</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">Temperature</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ health.temperature or '—' }}</span>
                 </div>
             </div>
-        </div>
 
-        <!-- Server PC Info -->
-        <div class="bg-white rounded border border-gray-200 p-6 mb-8">
-            <h2 class="text-lg font-bold text-[#0b343d] uppercase mb-6">Server PC</h2>
-            <div class="space-y-4">
-                <!-- Server Model -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                            <span class="text-green-600 font-bold">🖥</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">Model</span>
-                    </div>
-                    <span class="text-gray-900 font-bold text-right">{{ server_stats.model | default('N/A') }}</span>
-                </div>
-
-                <!-- Server CPU -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                            <span class="text-indigo-600 font-bold">🔧</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">CPU</span>
-                    </div>
-                    <span class="text-gray-900 font-bold text-right text-sm">{{ server_stats.cpu_model | default('N/A') }}</span>
-                </div>
-
-                <!-- Server Uptime -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                            <span class="text-blue-600 font-bold">⏱</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">Uptime</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ server_stats.uptime | default('0s') }}</span>
-                </div>
-
-                <!-- Server Memory -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                            <span class="text-purple-600 font-bold">💾</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">Memory</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ server_stats.used_memory | default(0) }} / {{ server_stats.total_memory | default(0) }} MB</span>
-                </div>
-
-                <!-- Server CPU Usage -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
-                            <span class="text-cyan-600 font-bold">⚙️</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">CPU Usage</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ server_stats.cpu_usage | default(0) }}%</span>
-                </div>
-
-                <!-- Server Temperature -->
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                            <span class="text-orange-600 font-bold">🌡</span>
-                        </div>
-                        <span class="text-gray-700 font-medium">Temperature</span>
-                    </div>
-                    <span class="text-gray-900 font-bold">{{ server_stats.temperature | default('—') }}</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Online Users Summary -->
-        <div class="bg-white border border-gray-200 rounded p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2">
-                    <span class="w-3 h-3 rounded-full {% if active_users|length > 0 %}bg-green-500{% else %}bg-gray-400{% endif %} inline-block"></span>
-                    <p class="text-sm font-semibold text-[#0b343d]">Online Users</p>
-                </div>
-                <p class="text-2xl font-bold text-[#0b343d]">{{ active_users|length }}</p>
-            </div>
-            <div class="space-y-3 max-h-80 overflow-y-auto">
-                {% if active_users and active_users|length > 0 %}
-                    {% for user in active_users %}
-                    <div class="flex items-center justify-between border border-gray-100 rounded px-4 py-3">
-                        <div>
-                            <p class="text-sm font-bold text-[#0b343d]">{{ user.user or 'Unknown' }}</p>
-                            <p class="text-xs text-gray-600 font-mono">{{ user.mac }}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-xs text-gray-500">Time left</p>
-                            <p class="text-sm font-semibold text-[#0b343d]">{{ user.time_left or 'n/a' }}</p>
-                            <p class="text-xs text-gray-500">Uptime: {{ user.uptime }}</p>
+            <!-- Sales & Income Section -->
+            <div id="category-sales" class="category-content hidden">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">Sales & Income</h2>
+                
+                <!-- Income Summary -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-md">
+                    <!-- Daily Sales -->
+                    <div class="pb-6 mb-6 border-b border-gray-200">
+                        <p class="text-sm text-gray-600 uppercase font-bold mb-3">Daily Sales</p>
+                        <div class="flex items-end justify-between">
+                            <p class="text-4xl font-bold text-[#0b343d]">₱{{ income_stats.earned_today | default(0) }}</p>
+                            <p class="text-xs text-gray-500">Your Daily Income</p>
                         </div>
                     </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center text-gray-500 text-sm py-6">No active users</div>
-                {% endif %}
-            </div>
 
-        </div>
+                    <!-- Weekly Sales -->
+                    <div class="pb-6 mb-6 border-b border-gray-200">
+                        <p class="text-sm text-gray-600 uppercase font-bold mb-3">Weekly Sales</p>
+                        <div class="flex items-end justify-between">
+                            <p class="text-4xl font-bold text-[#ffd41d]">₱{{ income_stats.weekly | default(0) }}</p>
+                            <p class="text-xs text-gray-500">Your Weekly Income</p>
+                        </div>
+                    </div>
 
-    <!-- Finance Tab -->
-    <div id="content-finance" class="tab-content hidden">
-        <!-- Sales Summary Cards -->
-        <div class="space-y-4 mb-8">
-            <!-- Daily Sales -->
-            <div class="bg-white p-6 rounded border border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-2">Daily Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-[#0b343d]">₱0.00</p>
-                    <p class="text-xs text-gray-500">Your Daily Income</p>
+                    <!-- Monthly Sales -->
+                    <div class="pb-6 mb-6 border-b border-gray-200">
+                        <p class="text-sm text-gray-600 uppercase font-bold mb-3">Monthly Sales</p>
+                        <div class="flex items-end justify-between">
+                            <p class="text-4xl font-bold text-pink-600">₱{{ income_stats.earned_month | default(0) }}</p>
+                            <p class="text-xs text-gray-500">Your Monthly Income</p>
+                        </div>
+                    </div>
+
+                    <!-- Yearly Sales -->
+                    <div class="pb-6 mb-6 border-b border-gray-200">
+                        <p class="text-sm text-gray-600 uppercase font-bold mb-3">Yearly Sales</p>
+                        <div class="flex items-end justify-between">
+                            <p class="text-4xl font-bold text-teal-600">₱{{ income_stats.earned_year | default(0) }}</p>
+                            <p class="text-xs text-gray-500">Your Yearly Income</p>
+                        </div>
+                    </div>
+
+                    <!-- Total Sales -->
+                    <div class="text-center bg-gradient-to-r from-[#0b343d] to-[#0f4d5e] rounded-lg p-6 text-white">
+                        <h2 class="text-sm uppercase font-bold mb-4">Vendo Total Sales</h2>
+                        <p class="text-5xl font-bold">₱{{ income_stats.earned_year | default(0) }}</p>
+                        <p class="text-gray-200 text-sm mt-2">Total Income (This Year)</p>
+                    </div>
                 </div>
-                <div class="h-1 bg-blue-500 rounded-full mt-3"></div>
             </div>
 
-            <!-- Weekly Sales -->
-            <div class="bg-white p-6 rounded border border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-2">Weekly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-[#ffd41d]">₱0.00</p>
-                    <p class="text-xs text-gray-500">Your Weekly Income</p>
+            <!-- Router Info Section -->
+            <div id="category-router" class="category-content hidden">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">Router Information</h2>
+                
+                <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                    <div class="space-y-4">
+                        <!-- Router Model -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                    <span class="text-green-600 font-bold">🖧</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Model</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ system_stats.board_name | default('N/A') }}</span>
+                        </div>
+
+                        <!-- Router Uptime -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span class="text-blue-600 font-bold">⏱</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Uptime</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ system_stats.uptime | default('0s') }}</span>
+                        </div>
+
+                        <!-- Router Memory -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                                    <span class="text-purple-600 font-bold">💾</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Memory</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ (system_stats.free_memory | default(0)) // 1048576 }} / {{ (system_stats.total_memory | default(0)) // 1048576 }} MB</span>
+                        </div>
+
+                        <!-- Router CPU -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
+                                    <span class="text-cyan-600 font-bold">⚙️</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">CPU Load</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ system_stats.cpu_load | default(0) }}%</span>
+                        </div>
+
+                        <!-- Router Temperature -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                                    <span class="text-orange-600 font-bold">🌡</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Temperature</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ health.temperature or '—' }}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="h-1 bg-[#ffd41d] rounded-full mt-3"></div>
             </div>
 
-            <!-- Monthly Sales -->
-            <div class="bg-white p-6 rounded border border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-2">Monthly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-pink-600">₱0.00</p>
-                    <p class="text-xs text-gray-500">Your Monthly Income</p>
+            <!-- Server Hardware Section -->
+            <div id="category-server" class="category-content hidden">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">Server Hardware</h2>
+                
+                <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                    <div class="space-y-4">
+                        <!-- Server Model -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                    <span class="text-green-600 font-bold">🖥</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Model</span>
+                            </div>
+                            <span class="text-gray-900 font-bold text-right">{{ server_stats.model | default('N/A') }}</span>
+                        </div>
+
+                        <!-- Server CPU -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                    <span class="text-indigo-600 font-bold">🔧</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">CPU Model</span>
+                            </div>
+                            <span class="text-gray-900 font-bold text-right text-sm">{{ server_stats.cpu_model | default('N/A') }}</span>
+                        </div>
+
+                        <!-- CPU Cores -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                    <span class="text-indigo-600 font-bold">⚡</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">CPU Cores</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ server_stats.cpu_cores | default('N/A') }}</span>
+                        </div>
+
+                        <!-- Server Uptime -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span class="text-blue-600 font-bold">⏱</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Uptime</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ server_stats.uptime | default('0s') }}</span>
+                        </div>
+
+                        <!-- Server Memory -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                                    <span class="text-purple-600 font-bold">💾</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Memory</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ server_stats.used_memory | default(0) }} / {{ server_stats.total_memory | default(0) }} MB</span>
+                        </div>
+
+                        <!-- Server CPU Usage -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center">
+                                    <span class="text-cyan-600 font-bold">⚙️</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">CPU Usage</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ server_stats.cpu_usage | default(0) }}%</span>
+                        </div>
+
+                        <!-- Server Temperature -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                                    <span class="text-orange-600 font-bold">🌡</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Temperature</span>
+                            </div>
+                            <span class="text-gray-900 font-bold">{{ server_stats.temperature | default('—') }}</span>
+                        </div>
+
+                        <!-- Server OS -->
+                        <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span class="text-blue-600 font-bold">🐧</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Operating System</span>
+                            </div>
+                            <span class="text-gray-900 font-bold text-sm">{{ server_stats.os | default('N/A') }}</span>
+                        </div>
+
+                        <!-- Server Kernel -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                                    <span class="text-gray-600 font-bold">🔌</span>
+                                </div>
+                                <span class="text-gray-700 font-medium">Kernel</span>
+                            </div>
+                            <span class="text-gray-900 font-bold text-sm">{{ server_stats.kernel | default('N/A') }}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="h-1 bg-pink-600 rounded-full mt-3"></div>
             </div>
 
-            <!-- Yearly Sales -->
-            <div class="bg-white p-6 rounded border border-gray-200">
-                <p class="text-sm text-gray-600 uppercase font-bold mb-2">Yearly Sales</p>
-                <div class="flex items-end justify-between">
-                    <p class="text-3xl font-bold text-teal-600">₱0.00</p>
-                    <p class="text-xs text-gray-500">Your Yearly Income</p>
+            <!-- Active Users Section -->
+            <div id="category-users" class="category-content hidden">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">Active Users</h2>
+                
+                <div class="bg-white border border-gray-200 rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full {% if active_users|length > 0 %}bg-green-500{% else %}bg-gray-400{% endif %} inline-block"></span>
+                            <p class="text-lg font-semibold text-[#0b343d]">Online Users</p>
+                        </div>
+                        <p class="text-4xl font-bold text-[#0b343d]">{{ active_users|length }}</p>
+                    </div>
+                    <div class="space-y-3 max-h-96 overflow-y-auto">
+                        {% if active_users and active_users|length > 0 %}
+                            {% for user in active_users %}
+                            <div class="flex items-center justify-between border border-gray-100 rounded-lg px-4 py-3 hover:bg-gray-50 transition">
+                                <div>
+                                    <p class="text-sm font-bold text-[#0b343d]">{{ user.user or 'Unknown' }}</p>
+                                    <p class="text-xs text-gray-600 font-mono">{{ user.mac }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xs text-gray-500">Time left</p>
+                                    <p class="text-sm font-semibold text-[#0b343d]">{{ user.time_left or 'n/a' }}</p>
+                                    <p class="text-xs text-gray-500">Uptime: {{ user.uptime }}</p>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-gray-500 text-sm py-12">
+                                <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10h.01M13 10h.01M11 10h.01M7 20h10a2 2 0 002-2V9a2 2 0 00-2-2H7a2 2 0 00-2 2v9a2 2 0 002 2z"></path>
+                                </svg>
+                                <p>No active users</p>
+                            </div>
+                        {% endif %}
+                    </div>
                 </div>
-                <div class="h-1 bg-teal-600 rounded-full mt-3"></div>
             </div>
-        </div>
-    </div>
-
-    <!-- Sessions Tab -->
-    <div id="content-sessions" class="tab-content hidden">
-        <div class="bg-white p-8 rounded border border-gray-300 text-center">
-            <div class="mb-4">
-                <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10h.01M13 10h.01M11 10h.01M7 20h10a2 2 0 002-2V9a2 2 0 00-2-2H7a2 2 0 00-2 2v9a2 2 0 002 2z"></path>
-                </svg>
-            </div>
-            <h3 class="text-xl font-bold text-[#0b343d] mb-2">No Active Users Data</h3>
-            <p class="text-gray-600 mb-2">Unable to retrieve active users from the MikroTik router.</p>
-            <p class="text-sm text-gray-500">Please verify the router connection and API credentials.</p>
         </div>
     </div>
 </div>
@@ -312,9 +439,27 @@
     {{ income_stats | tojson }}
 </script>
 <script>
-    function switchTab(tabName) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.getElementById('content-' + tabName).classList.remove('hidden');
+    function switchCategory(categoryName) {
+        // Hide all category content
+        document.querySelectorAll('.category-content').forEach(el => el.classList.add('hidden'));
+        
+        // Show selected category
+        const categoryEl = document.getElementById('category-' + categoryName);
+        if (categoryEl) {
+            categoryEl.classList.remove('hidden');
+        }
+        
+        // Update active button
+        document.querySelectorAll('.category-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-gradient-to-r', 'from-[#0b343d]', 'to-[#0f4d5e]', 'text-white', 'border-l-4', 'border-orange-500');
+            btn.classList.add('text-gray-700');
+        });
+        
+        const activeBtn = document.querySelector(`[data-category="${categoryName}"]`);
+        if (activeBtn) {
+            activeBtn.classList.add('active', 'bg-gradient-to-r', 'from-[#0b343d]', 'to-[#0f4d5e]', 'text-white', 'border-l-4', 'border-orange-500');
+            activeBtn.classList.remove('text-gray-700');
+        }
     }
 
     async function controlServer(action) {
