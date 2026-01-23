@@ -241,6 +241,32 @@ def check_status():
 @client_bp.route('/status')
 def status_page():
     code = request.args.get('code')
+    
+    # If no code provided, try to auto-detect from MAC address
+    if not code:
+        # Try to get MAC from session or MikroTik
+        mac_address = session.get('hotspot_mac') or request.args.get('mac')
+        if not mac_address:
+            # Try to get from MikroTik active sessions by IP
+            client_ip = request.remote_addr
+            mac_address = get_mac_from_active_session(client_ip)
+        
+        if mac_address:
+            # Find active voucher for this MAC
+            voucher = Voucher.query.filter(
+                Voucher.user_mac_address == mac_address,
+                Voucher.activated_at != None
+            ).order_by(Voucher.expires_at.desc()).first()
+            
+            if voucher and voucher.remaining_seconds > 0:
+                current_app.logger.info("Status: Auto-detected voucher %s for MAC %s", voucher.code, mac_address)
+                # Redirect to status page with code for clean URL
+                return redirect(url_for('client.status_page', code=voucher.code))
+        
+        # No code and couldn't detect - show error or redirect to login
+        flash("No active session found. Please enter your voucher code.", "error")
+        return redirect(url_for('client.index'))
+    
     # Disable query caching to ensure fresh data from database
     voucher = Voucher.query.filter_by(code=code).first_or_404()
     db.session.expunge(voucher)  # Remove from session cache
