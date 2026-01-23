@@ -5,7 +5,8 @@ from ..models import Voucher
 from ..utils import (
     get_mikrotik_active_hotspot_users,
     mikrotik_allow_mac,
-    get_mac_from_active_session
+    get_mac_from_active_session,
+    get_mac_from_arp
 )
 from datetime import datetime, timezone
 import socket
@@ -58,9 +59,15 @@ def index():
             session.pop('active_code', None)
             session.modified = True  # Ensure session changes are saved
     
-    # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
+    # If no MAC from hotspot params, try to get from MikroTik
     if not mac_address:
+        # First try active sessions (already authenticated users)
         mac_address = get_mac_from_active_session(client_ip)
+        
+        # If not found, try ARP table (includes unauthenticated devices)
+        if not mac_address:
+            mac_address = get_mac_from_arp(client_ip)
+            current_app.logger.info("Index: Got MAC from ARP for IP %s: %s", client_ip, mac_address)
     
     # Check if MAC address has an active voucher
     detected_code = None
