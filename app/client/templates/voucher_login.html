@@ -82,9 +82,52 @@
 <script src="{{ url_for('static', filename='js/notification.js') }}"></script>
 <script src="{{ url_for('static', filename='js/voucher_login.js') }}"></script>
 <script>
-    document.getElementById('voucherForm').addEventListener('submit', function() {
-        document.getElementById('submitBtn').classList.add('hidden');
-        document.getElementById('loadingSpinner').style.display = 'block';
+    const form = document.getElementById('voucherForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    
+    let isSubmitting = false;
+    let checkInterval = null;
+    
+    form.addEventListener('submit', function(e) {
+        if (isSubmitting) {
+            e.preventDefault();
+            return false;
+        }
+        
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.classList.add('hidden');
+        loadingSpinner.style.display = 'block';
+        
+        // Get the voucher code
+        const voucherCode = document.getElementById('voucher_code').value.trim().toUpperCase();
+        
+        // Start checking for activation after submission
+        setTimeout(function() {
+            checkInterval = setInterval(function() {
+                fetch('/api/status/' + voucherCode)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.active && data.remaining_seconds > 0) {
+                            clearInterval(checkInterval);
+                            // Redirect to status page
+                            window.location.href = '/status?code=' + voucherCode;
+                        }
+                    })
+                    .catch(err => console.log('Status check:', err));
+            }, 2000); // Check every 2 seconds
+            
+            // Stop checking after 30 seconds
+            setTimeout(function() {
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                }
+            }, 30000);
+        }, 3000); // Start checking 3 seconds after submission
+        
+        // Allow form to submit naturally
+        return true;
     });
 </script>
 {% endblock %}
