@@ -43,29 +43,10 @@ def dashboard():
         if api_pool:
             pass
 
-    # Fallback: if RouterOS active list is empty, use locally activated vouchers with time remaining
+    # Only show users that are actually active on MikroTik router
+    # No database fallback - dashboard should reflect real MikroTik state
     if not active_users:
-        db_active_users = []
-        vouchers = Voucher.query.filter(
-            Voucher.activated_at != None,
-            Voucher.expires_at != None,
-            Voucher.user_mac_address != None
-        ).all()
-        for v in vouchers:
-            if v.remaining_seconds > 0:
-                secs = v.remaining_seconds
-                hours, rem = divmod(secs, 3600)
-                minutes, _ = divmod(rem, 60)
-                time_left = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-                db_active_users.append({
-                    "user": v.code,
-                    "mac": v.user_mac_address,
-                    "uptime": "Activated",
-                    "bytes_in": 0,
-                    "bytes_out": 0,
-                    "time_left": time_left
-                })
-        active_users = db_active_users
+        active_users = []
 
     # Treat mock uptime marker as disconnected
     connection_ok = system_stats.get('uptime') != 'Offline (Mock)'
