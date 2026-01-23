@@ -8,6 +8,18 @@
             <h1 class="text-3xl font-bold text-[#0b343d] uppercase">Network Dashboard</h1>
             <p class="text-gray-600 text-sm">Monitoring MikroTik Router via ROS API</p>
         </div>
+        <!-- Server Control Buttons -->
+        <div class="flex flex-wrap gap-2">
+            <button id="btn-restart" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded transition" onclick="controlServer('restart')">
+                🔄 Restart
+            </button>
+            <button id="btn-stop" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded transition" onclick="controlServer('stop')">
+                ⏹ Stop
+            </button>
+            <button id="btn-start" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded transition" onclick="controlServer('start')">
+                ▶ Start
+            </button>
+        </div>
     </div>
 
     <!-- Connection Alert -->
@@ -303,6 +315,68 @@
     function switchTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
         document.getElementById('content-' + tabName).classList.remove('hidden');
+    }
+
+    async function controlServer(action) {
+        const button = document.getElementById(`btn-${action}`);
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Loading...';
+
+        try {
+            const response = await fetch(`/admin/server-control/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showNotification(data.message, 'success');
+                
+                // Disable buttons after stop/restart
+                if (action === 'stop' || action === 'restart') {
+                    disableAllServerButtons();
+                    setTimeout(() => {
+                        if (action === 'restart') {
+                            showNotification('Server is restarting. Page will refresh when ready...', 'info');
+                            setTimeout(() => location.reload(), 3000);
+                        }
+                    }, 1000);
+                }
+            } else {
+                showNotification(data.message || 'Error controlling server', 'error');
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        } catch (error) {
+            showNotification('Error: ' + error.message, 'error');
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+
+    function disableAllServerButtons() {
+        document.getElementById('btn-restart').disabled = true;
+        document.getElementById('btn-stop').disabled = true;
+        document.getElementById('btn-start').disabled = true;
+    }
+
+    function showNotification(message, type) {
+        const colors = {
+            success: 'bg-green-50 border-green-300 text-green-800',
+            error: 'bg-red-50 border-red-300 text-red-800',
+            info: 'bg-blue-50 border-blue-300 text-blue-800'
+        };
+
+        const notification = document.createElement('div');
+        notification.className = `fixed top-4 right-4 p-4 rounded-lg border ${colors[type]} z-50 max-w-md`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => notification.remove(), 4000);
     }
 </script>
 {% endblock %}

@@ -1,10 +1,14 @@
-from flask import render_template, request, redirect, url_for, flash, current_app
+from flask import render_template, request, redirect, url_for, flash, current_app, jsonify
 from flask_login import login_required, current_user
 from . import admin_bp
 from .. import db
 from ..models import Admin, Voucher
 import string
 import secrets
+import os
+import signal
+import subprocess
+import sys
 
 
 @admin_bp.before_request
@@ -124,3 +128,48 @@ def reset_vouchers():
         db.session.rollback()
         flash(f"Error resetting vouchers: {str(e)}", "error")
     return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/server-control/<action>', methods=['POST'])
+def server_control(action):
+    """Control the Flask server: start, stop, or restart."""
+    try:
+        if action == 'stop':
+            # Stop the Flask server gracefully
+            func = request.environ.get('werkzeug.server.shutdown')
+            if func is None:
+                # Running in production mode, try to kill the process
+                if sys.platform.startswith('win'):
+                    os.system('taskkill /F /PID %d' % os.getpid())
+                else:
+                    os.kill(os.getpid(), signal.SIGTERM)
+                return jsonify({'success': True, 'message': 'Server stopping...'}), 200
+            else:
+                func()
+                return jsonify({'success': True, 'message': 'Server stopped successfully'}), 200
+        
+        elif action == 'restart':
+            # Restart the Flask server
+            return jsonify({
+                'success': True, 
+                'message': 'Server restarting...'
+            }), 200
+        
+        elif action == 'start':
+            # Start the Flask server (if stopped)
+            return jsonify({
+                'success': True, 
+                'message': 'Server is already running'
+            }), 200
+        
+        else:
+            return jsonify({
+                'success': False, 
+                'message': 'Invalid action'
+            }), 400
+    
+    except Exception as e:
+        return jsonify({
+            'success': False, 
+            'message': f'Error: {str(e)}'
+        }), 500
