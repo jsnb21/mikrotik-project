@@ -11,14 +11,15 @@ from datetime import datetime, timezone
 import socket
 import threading
 
-def authorize_mikrotik_background(code, mac_address, duration):
-    """Background thread to authorize MAC with MikroTik"""
-    try:
-        current_app.logger.info("[BG] Starting MikroTik authorization for %s (MAC: %s)", code, mac_address)
-        mikrotik_allow_mac(mac_address, duration)
-        current_app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
-    except Exception as e:
-        current_app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
+def authorize_mikrotik_background(app, code, mac_address, duration):
+    """Background thread to authorize MAC with MikroTik using its own app context"""
+    with app.app_context():
+        try:
+            app.logger.info("[BG] Starting MikroTik authorization for %s (MAC: %s)", code, mac_address)
+            mikrotik_allow_mac(mac_address, duration)
+            app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
+        except Exception as e:
+            app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
 
 
 @client_bp.route('/')
@@ -111,10 +112,11 @@ def activate_quick():
         voucher.activate(mac_address)
         db.session.commit()
         
-        # Start MikroTik authorization in background thread
+        # Start MikroTik authorization in background thread with app context
+        flask_app = current_app._get_current_object()
         thread = threading.Thread(
             target=authorize_mikrotik_background,
-            args=(code, mac_address, voucher.duration),
+            args=(flask_app, code, mac_address, voucher.duration),
             daemon=True
         )
         thread.start()
