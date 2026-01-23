@@ -112,15 +112,15 @@
         // Show initial status
         statusMessage.textContent = 'Validating voucher...';
         
-        // Submit via AJAX for better control
-        fetch(form.action, {
+        // Submit via FAST API endpoint (no MikroTik wait in request)
+        fetch('/api/activate-quick', {
             method: 'POST',
-            body: formData,
-            redirect: 'manual' // Don't follow redirects automatically
+            body: formData
         })
-        .then(response => {
-            if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) {
-                // Activation successful! Start polling immediately
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Activation queued in background! Start polling immediately
                 statusMessage.textContent = 'Authorized! Connecting...';
                 activationStarted = true;
                 
@@ -150,24 +150,17 @@
                     }
                 }, 500);
             } else {
-                // Handle errors - response is HTML with error message
-                return response.text().then(html => {
-                    // Try to extract error message
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const alert = doc.querySelector('.alert-error');
-                    const errorMsg = alert ? alert.textContent.trim() : 'Activation failed';
-                    
-                    statusMessage.textContent = errorMsg;
-                    statusMessage.style.color = '#dc2626';
-                    
-                    setTimeout(() => {
-                        submitBtn.classList.remove('hidden');
-                        submitBtn.disabled = false;
-                        loadingSpinner.style.display = 'none';
-                        isSubmitting = false;
-                    }, 3000);
-                });
+                // Handle errors
+                const errorMsg = data.error || 'Activation failed. Please try again.';
+                statusMessage.textContent = errorMsg;
+                statusMessage.style.color = '#dc2626';
+                
+                setTimeout(() => {
+                    submitBtn.classList.remove('hidden');
+                    submitBtn.disabled = false;
+                    loadingSpinner.style.display = 'none';
+                    isSubmitting = false;
+                }, 2000);
             }
         })
         .catch(error => {

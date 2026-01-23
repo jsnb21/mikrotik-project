@@ -9,6 +9,16 @@ from ..utils import (
 )
 from datetime import datetime, timezone
 import socket
+import threading
+
+def authorize_mikrotik_background(code, mac_address, duration):
+    """Background thread to authorize MAC with MikroTik"""
+    try:
+        current_app.logger.info("[BG] Starting MikroTik authorization for %s (MAC: %s)", code, mac_address)
+        mikrotik_allow_mac(mac_address, duration)
+        current_app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
+    except Exception as e:
+        current_app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
 
 
 @client_bp.route('/')
@@ -72,6 +82,50 @@ def design_view():
                          mac_address="00:11:22:33:44:55",
                          ip_address="192.168.88.254",
                          link_orig="http://www.google.com")
+
+
+@client_bp.route('/api/activate-quick', methods=['POST'])
+def activate_quick():
+    """Fast activation endpoint - validates and queues MikroTik authorization in background"""
+    code = request.form.get('voucher_code', '').strip().upper()
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00'
+    
+    current_app.logger.info("[QUICK] Activate attempt: code=%s, mac=%s", code, mac_address)
+    
+    # FAST VALIDATION ONLY (no MikroTik calls)
+    voucher = Voucher.query.filter_by(code=code).first()
+    
+    if not voucher:
+        current_app.logger.warning("[QUICK] Voucher not found: %s", code)
+        return jsonify({'success': False, 'error': 'Invalid voucher code'}), 400
+    
+    if voucher.is_activated:
+        current_app.logger.info("[QUICK] Voucher already activated: %s", code)
+        if voucher.user_mac_address == mac_address and voucher.remaining_seconds > 0:
+            return jsonify({'success': True, 'message': 'Already activated'}), 200
+        return jsonify({'success': False, 'error': 'Voucher already used'}), 400
+    
+    try:
+        # Quick database activation (no MikroTik yet)
+        current_app.logger.info("[QUICK] Quick-activating voucher %s for MAC %s", code, mac_address)
+        voucher.activate(mac_address)
+        db.session.commit()
+        
+        # Start MikroTik authorization in background thread
+        thread = threading.Thread(
+            target=authorize_mikrotik_background,
+            args=(code, mac_address, voucher.duration),
+            daemon=True
+        )
+        thread.start()
+        
+        session['active_code'] = code
+        return jsonify({'success': True, 'message': 'Activation in progress'}), 200
+        
+    except Exception as e:
+        current_app.logger.exception("[QUICK] Error in quick activation: %s", code)
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @client_bp.route('/activate', methods=['POST'])
