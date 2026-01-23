@@ -120,25 +120,18 @@ def activate():
                              link_orig=session.get('hotspot_link_orig'))
 
     try:
-        # Integration with MikroTik FIRST - authorize before activating in database
-        current_app.logger.info("Authorizing MAC %s on MikroTik for voucher %s", mac_address, code)
-        try:
-            mikrotik_allow_mac(mac_address, voucher.duration)  # Use voucher.duration for initial authorization
-        except Exception as e:
-            current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
-            flash("Failed to authorize with router. Please check MikroTik connection and try again.", "error")
-            mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
-            return render_template('voucher_login.html', 
-                                 mac_address=mac_address,
-                                 ip_address=session.get('hotspot_ip'),
-                                 link_orig=session.get('hotspot_link_orig'))
-        
-        # Only activate in database after MikroTik authorization succeeds
+        # Activate Session Logic
         current_app.logger.info("Activating voucher %s for MAC %s", code, mac_address)
         voucher.activate(mac_address)
         db.session.commit()
         db.session.refresh(voucher)  # Refresh to ensure object is synced with database
         current_app.logger.info("Activated voucher %s (developer=%s): activated_at=%s expires_at=%s remaining=%s", voucher.code, voucher.is_developer, voucher.activated_at, voucher.expires_at, voucher.remaining_seconds)
+        
+        # Integration with MikroTik
+        try:
+            mikrotik_allow_mac(mac_address, voucher.remaining_seconds)
+        except Exception:
+            current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
         
         session['active_code'] = code # Set cookie
         return redirect(url_for('client.status_page', code=code))
