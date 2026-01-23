@@ -91,7 +91,13 @@
     const statusMessage = document.getElementById('statusMessage');
     
     let isSubmitting = false;
-    let activationStarted = false;
+    let redirecting = false;
+
+    const redirectToStatus = (code) => {
+        if (redirecting) return;
+        redirecting = true;
+        window.location.href = '/status?code=' + code;
+    };
     
     form.addEventListener('submit', function(e) {
         e.preventDefault(); // Prevent default form submission
@@ -115,40 +121,43 @@
         // Submit via FAST API endpoint (no MikroTik wait in request)
         fetch('/api/activate-quick', {
             method: 'POST',
-            body: formData
+            body: formData,
+            cache: 'no-store'
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Activation queued in background! Start polling immediately
+                // Activation queued in background! Start fast polling immediately
                 statusMessage.textContent = 'Authorized! Connecting...';
-                activationStarted = true;
-                
-                // Fast polling to detect activation
                 let pollCount = 0;
+                const maxPolls = 10; // ~3 seconds at 300ms
                 const pollInterval = setInterval(function() {
                     pollCount++;
+                    const cb = Date.now();
                     
-                    fetch('/api/status/' + voucherCode)
+                    // Poll status with cache-busting and no-store
+                    fetch(`/api/status/${voucherCode}?cb=${cb}`, { cache: 'no-store' })
                         .then(res => res.json())
                         .then(data => {
                             if (data.active && data.remaining_seconds > 0) {
                                 clearInterval(pollInterval);
                                 statusMessage.textContent = 'Connected! Redirecting...';
-                                setTimeout(() => {
-                                    window.location.href = '/status?code=' + voucherCode;
-                                }, 100);
+                                setTimeout(() => redirectToStatus(voucherCode), 50);
                             }
                         })
-                        .catch(err => console.log('Poll:', err));
+                        .catch(err => console.log('Poll status:', err));
+
+                    // Also try a local ping to detect LAN connectivity early
+                    fetch(`/ping?c=${cb}`, { cache: 'no-store' })
+                        .then(r => { if (r.ok) { clearInterval(pollInterval); statusMessage.textContent = 'Connected! Redirecting...'; setTimeout(() => redirectToStatus(voucherCode), 50); }})
+                        .catch(() => {});
                     
-                    // Stop after 20 attempts (10 seconds)
-                    if (pollCount > 20) {
+                    if (pollCount >= maxPolls) {
                         clearInterval(pollInterval);
-                        // Just redirect anyway
-                        window.location.href = '/status?code=' + voucherCode;
+                        statusMessage.textContent = 'Finalizing...';
+                        setTimeout(() => redirectToStatus(voucherCode), 400);
                     }
-                }, 500);
+                }, 300);
             } else {
                 // Handle errors
                 const errorMsg = data.error || 'Activation failed. Please try again.';

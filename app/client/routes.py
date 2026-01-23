@@ -10,6 +10,7 @@ from ..utils import (
 from datetime import datetime, timezone
 import socket
 import threading
+from flask import make_response
 
 def authorize_mikrotik_background(app, code, mac_address, duration):
     """Background thread to authorize MAC with MikroTik using its own app context"""
@@ -20,6 +21,14 @@ def authorize_mikrotik_background(app, code, mac_address, duration):
             app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
         except Exception as e:
             app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
+
+
+@client_bp.route('/ping')
+def ping():
+    """Fast, no-cache ping to detect connectivity after bypass."""
+    resp = make_response(jsonify({'ok': True, 'server_time': datetime.now(timezone.utc).isoformat()}))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 
 @client_bp.route('/')
