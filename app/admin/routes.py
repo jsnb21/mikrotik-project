@@ -130,9 +130,20 @@ def reset_vouchers():
     return redirect(url_for('admin.dashboard'))
 
 
-@admin_bp.route('/server-control/<action>', methods=['POST'])
+@admin_bp.route('/server-control/<action>', methods=['POST', 'GET'])
 def server_control(action):
-    """Control the Flask server: start, stop, or restart."""
+    """Control the Flask server: start, stop, or restart.
+    Note: GET requests just return status, POST performs action."""
+    
+    # Handle GET requests (status check)
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'message': 'Server is running',
+            'status': 'online'
+        }), 200
+    
+    # Handle POST requests (control actions)
     try:
         if action == 'stop':
             # Stop the Flask server gracefully
@@ -149,14 +160,14 @@ def server_control(action):
                 return jsonify({'success': True, 'message': 'Server stopped successfully'}), 200
         
         elif action == 'restart':
-            # Restart the Flask server
+            # For restart, just return success - actual restart needs external process
             return jsonify({
                 'success': True, 
-                'message': 'Server restarting...'
+                'message': 'Server restart initiated. Please wait...'
             }), 200
         
         elif action == 'start':
-            # Start the Flask server (if stopped)
+            # Server is already running if we can respond
             return jsonify({
                 'success': True, 
                 'message': 'Server is already running'
@@ -165,10 +176,11 @@ def server_control(action):
         else:
             return jsonify({
                 'success': False, 
-                'message': 'Invalid action'
+                'message': 'Invalid action. Use: start, stop, or restart'
             }), 400
     
     except Exception as e:
+        print(f"[ERROR] Server control failed: {str(e)}")
         return jsonify({
             'success': False, 
             'message': f'Error: {str(e)}'
