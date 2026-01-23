@@ -1,5 +1,8 @@
 # app/utils.py
 import os
+import time
+import threading
+from functools import wraps
 
 # Try to import routeros_api, but make it optional
 try:
@@ -9,9 +12,70 @@ except ImportError:
     ROUTEROS_AVAILABLE = False
     print("[WARNING] routeros_api not available. MikroTik API will be mocked.")
 
+# ============ CACHING & PERFORMANCE ============
+class CachedValue:
+    """Simple TTL cache."""
+    def __init__(self, ttl_seconds=5):
+        self.ttl = ttl_seconds
+        self.data = None
+        self.timestamp = 0
+    
+    def get(self):
+        """Return cached value if not expired, else None."""
+        if time.time() - self.timestamp < self.ttl:
+            return self.data
+        return None
+    
+    def set(self, value):
+        """Store value with current timestamp."""
+        self.data = value
+        self.timestamp = time.time()
+
+# Global cache for API calls (TTL = 5 seconds)
+_cache_system_stats = CachedValue(ttl_seconds=5)
+_cache_active_users = CachedValue(ttl_seconds=5)
+_cache_health = CachedValue(ttl_seconds=10)
+_cache_traffic = {}  # Per-interface cache
+
+def cache_result(cache_obj, ttl=5):
+    """Decorator to cache function results with TTL."""
+    cache_obj.ttl = ttl
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            cached = cache_obj.get()
+            if cached is not None:
+                return cached
+            result = func(*args, **kwargs)
+            cache_obj.set(result)
+            return result
+        return wrapper
+    return decorator
+
+# ============ GLOBAL CONNECTION POOL (REUSE) ============
+_api_pool_instance = None
+_pool_lock = threading.Lock()
+
+def get_pooled_api():
+    """Get or create a reusable API connection pool."""
+    global _api_pool_instance
+    if _api_pool_instance is not None:
+        try:
+            # Test if connection is still alive
+            api = _api_pool_instance.get_api()
+            api.get_resource('/system/identity').get()
+            return _api_pool_instance
+        except Exception as e:
+            print(f"[DEBUG] Pooled connection failed, reconnecting: {str(e)[:100]}")
+            _api_pool_instance = None
+    
+    # Create new connection
+    return get_mikrotik_api()
+
 def get_mikrotik_api():
     """Connect to MikroTik RouterOS API.
     Prefers Flask app config if available; falls back to environment variables.
+    Includes timeout and connection pooling for better performance.
     """
     if not ROUTEROS_AVAILABLE:
         return None
@@ -23,6 +87,7 @@ def get_mikrotik_api():
         password = None
         port = None
         use_ssl = None
+        timeout = 15  # Add timeout (in seconds)
 
         try:
             from flask import current_app, has_app_context
@@ -43,6 +108,7 @@ def get_mikrotik_api():
         password = password or os.getenv('MIKROTIK_PASSWORD', '')
         port = int(port or os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = bool(use_ssl) if use_ssl is not None else (os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true')
+        timeout = int(os.getenv('MIKROTIK_TIMEOUT', 15))
 
         # Strip accidental whitespace from credentials
         username = (username or '').strip()
@@ -50,7 +116,7 @@ def get_mikrotik_api():
 
         # Show password hint for debugging (first char + *** + last char)
         pwd_hint = f"{password[0]}***{password[-1]}" if len(password) > 2 else "***"
-        print(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, password={pwd_hint} (length={len(password)})")
+        print(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, timeout={timeout}s, password={pwd_hint} (length={len(password)})")
 
         # Connection strategies
         connection_attempts = []
@@ -70,10 +136,10 @@ def get_mikrotik_api():
                 print(f"[DEBUG] Trying connection method: {attempt_name}")
                 if plaintext:
                     api = RouterOsApiPool(host, username=username, password=password,
-                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True)
+                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True, timeout=timeout)
                 else:
                     api = RouterOsApiPool(host, username=username, password=password,
-                                          port=attempt_port, use_ssl=attempt_ssl)
+                                          port=attempt_port, use_ssl=attempt_ssl, timeout=timeout)
                 print(f"[DEBUG] OK Connected successfully using: {attempt_name}")
                 return api
             except Exception as e:
@@ -87,7 +153,7 @@ def get_mikrotik_api():
 
 def get_mikrotik_system_stats(api_pool=None):
     """
-    Fetch system resource usage from MikroTik.
+    Fetch system resource usage from MikroTik (CACHED, 5s TTL).
     Args:
         api_pool: Optional existing MikroTik API connection to reuse
     Returns: dict with cpu, memory, uptime, etc.
@@ -102,10 +168,16 @@ def get_mikrotik_system_stats(api_pool=None):
         "version": "Unknown"
     }
 
+    # Check cache first
+    cached = _cache_system_stats.get()
+    if cached is not None:
+        print("[DEBUG] System stats cache hit (5s TTL)")
+        return cached
+
     # Use provided connection or create new one
     connection_provided = api_pool is not None
     if not connection_provided:
-        api_pool = get_mikrotik_api()
+        api_pool = get_pooled_api()  # Use pooled connection
     
     if not api_pool:
         return mock_data
@@ -122,7 +194,7 @@ def get_mikrotik_system_stats(api_pool=None):
             if routerboard:
                 model = routerboard[0].get('model', 'RouterBOARD')
             
-            return {
+            result = {
                 "cpu_load": res.get('cpu-load', 0),
                 "free_memory": int(res.get('free-memory', 0)),
                 "total_memory": int(res.get('total-memory', 0)),
@@ -130,6 +202,8 @@ def get_mikrotik_system_stats(api_pool=None):
                 "board_name": model,
                 "version": res.get('version', 'Unknown')
             }
+            _cache_system_stats.set(result)  # Cache result
+            return result
     except Exception as e:
         print(f"[MIKROTIK] Error fetching system stats: {e}")
     finally:
@@ -280,7 +354,7 @@ def get_mac_from_arp(ip_address):
 
 def get_mikrotik_active_hotspot_users(api_pool=None):
     """
-    Fetch active hotspot users from MikroTik.
+    Fetch active hotspot users from MikroTik (CACHED, 5s TTL).
     Args:
         api_pool: Optional existing MikroTik API connection to reuse
     Returns: list of dicts.
@@ -288,10 +362,16 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
     """
     mock_data = []
 
+    # Check cache first
+    cached = _cache_active_users.get()
+    if cached is not None:
+        print("[DEBUG] Active users cache hit (5s TTL)")
+        return cached
+
     # Use provided connection or create new one
     connection_provided = api_pool is not None
     if not connection_provided:
-        api_pool = get_mikrotik_api()
+        api_pool = get_pooled_api()  # Use pooled connection
     
     if not api_pool:
         return mock_data
@@ -311,6 +391,7 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
                 "bytes_out": int(session.get('bytes-out', 0)),
                 "time_left": session.get('session-time-left', 'Unknown')
             })
+        _cache_active_users.set(users_list)  # Cache result
         return users_list
     except Exception as e:
         print(f"[MIKROTIK] Error fetching active users: {e}")
@@ -340,12 +421,18 @@ def get_income_stats():
     }
 
 def get_mikrotik_health(api_pool=None):
-    """Fetch system health (temperature/voltage). Returns dict with optional temperature."""
+    """Fetch system health (temperature/voltage, CACHED, 10s TTL). Returns dict with optional temperature."""
     mock = {"temperature": None, "voltage": None}
+
+    # Check cache first
+    cached = _cache_health.get()
+    if cached is not None:
+        print("[DEBUG] Health cache hit (10s TTL)")
+        return cached
 
     connection_provided = api_pool is not None
     if not connection_provided:
-        api_pool = get_mikrotik_api()
+        api_pool = get_pooled_api()  # Use pooled connection
     if not api_pool:
         return mock
 
@@ -357,10 +444,12 @@ def get_mikrotik_health(api_pool=None):
             # RouterOS uses either 'temperature' or 'board-temperature'
             temp = first.get('temperature') or first.get('board-temperature')
             voltage = first.get('voltage') or first.get('board-voltage')
-            return {
+            result = {
                 "temperature": temp,
                 "voltage": voltage,
             }
+            _cache_health.set(result)  # Cache result
+            return result
     except Exception as e:
         print(f"[MIKROTIK] Error fetching health: {e}")
     finally:
@@ -593,3 +682,62 @@ def get_mac_from_arp(ip_address):
             pass
     
     return None
+# ============ ASYNC WRAPPERS FOR BACKGROUND FETCHING ============
+def fetch_system_stats_async(callback):
+    """Fetch system stats in background thread, call callback with result.
+    Prevents GUI blocking.
+    
+    Usage:
+        def handle_stats(stats, error=None):
+            if error:
+                print(f"Error: {error}")
+            else:
+                print(f"CPU: {stats['cpu_load']}%")
+        
+        fetch_system_stats_async(handle_stats)
+    """
+    def _fetch():
+        try:
+            stats = get_mikrotik_system_stats()
+            callback(stats, error=None)
+        except Exception as e:
+            callback(None, error=str(e))
+    
+    thread = threading.Thread(target=_fetch, daemon=True)
+    thread.start()
+
+def fetch_active_users_async(callback):
+    """Fetch active hotspot users in background thread, call callback with result."""
+    def _fetch():
+        try:
+            users = get_mikrotik_active_hotspot_users()
+            callback(users, error=None)
+        except Exception as e:
+            callback(None, error=str(e))
+    
+    thread = threading.Thread(target=_fetch, daemon=True)
+    thread.start()
+
+def fetch_health_async(callback):
+    """Fetch router health in background thread, call callback with result."""
+    def _fetch():
+        try:
+            health = get_mikrotik_health()
+            callback(health, error=None)
+        except Exception as e:
+            callback(None, error=str(e))
+    
+    thread = threading.Thread(target=_fetch, daemon=True)
+    thread.start()
+
+def fetch_traffic_async(interface, callback):
+    """Fetch interface traffic in background thread, call callback with result."""
+    def _fetch():
+        try:
+            traffic = get_mikrotik_interface_traffic(interface)
+            callback(traffic, error=None)
+        except Exception as e:
+            callback(None, error=str(e))
+    
+    thread = threading.Thread(target=_fetch, daemon=True)
+    thread.start()

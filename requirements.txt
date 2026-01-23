@@ -5,7 +5,8 @@ routeros-api==0.21.0
 flask_login==0.6.3
 customtkinter
 APScheduler==3.10.4
-psutil==5.9.0
+psutil==6.0.0
+waitress==2.1.2
 
 # Additional dependencies that did not install correctly
 flask
