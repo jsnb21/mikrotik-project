@@ -55,8 +55,11 @@
                 </button>
 
                 <!-- Loading text -->
-                <div id="loadingSpinner" class="text-center mt-4" style="display: none; color: #16a34a; font-size: 1.125rem; font-weight: 800;">
-                    Processing Voucher...
+                <div id="loadingSpinner" class="text-center mt-4" style="display: none;">
+                    <div class="flex flex-col items-center gap-3">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-[#16a34a]"></div>
+                        <p id="statusMessage" class="text-[#16a34a] font-bold text-lg">Processing Voucher...</p>
+                    </div>
                 </div>
             </form>
 
@@ -85,9 +88,11 @@
     const form = document.getElementById('voucherForm');
     const submitBtn = document.getElementById('submitBtn');
     const loadingSpinner = document.getElementById('loadingSpinner');
+    const statusMessage = document.getElementById('statusMessage');
     
     let isSubmitting = false;
     let checkInterval = null;
+    let checkCount = 0;
     
     form.addEventListener('submit', function(e) {
         if (isSubmitting) {
@@ -103,28 +108,58 @@
         // Get the voucher code
         const voucherCode = document.getElementById('voucher_code').value.trim().toUpperCase();
         
-        // Start checking for activation after submission
+        // Update status messages progressively
+        const updateStatus = () => {
+            checkCount++;
+            if (checkCount === 1) {
+                statusMessage.textContent = 'Validating voucher...';
+            } else if (checkCount === 2) {
+                statusMessage.textContent = 'Authorizing with MikroTik...';
+            } else if (checkCount >= 3) {
+                statusMessage.textContent = 'Activating session...';
+            }
+        };
+        
+        // Start checking for activation immediately with faster polling
         setTimeout(function() {
+            updateStatus();
+            
             checkInterval = setInterval(function() {
                 fetch('/api/status/' + voucherCode)
                     .then(response => response.json())
                     .then(data => {
                         if (data.active && data.remaining_seconds > 0) {
                             clearInterval(checkInterval);
-                            // Redirect to status page
-                            window.location.href = '/status?code=' + voucherCode;
+                            statusMessage.textContent = 'Connected! Redirecting...';
+                            // Immediate redirect
+                            setTimeout(() => {
+                                window.location.href = '/status?code=' + voucherCode;
+                            }, 200);
+                        } else {
+                            updateStatus();
                         }
                     })
-                    .catch(err => console.log('Status check:', err));
-            }, 2000); // Check every 2 seconds
+                    .catch(err => {
+                        console.log('Status check:', err);
+                        updateStatus();
+                    });
+            }, 500); // Check every 500ms for faster response
             
             // Stop checking after 30 seconds
             setTimeout(function() {
                 if (checkInterval) {
                     clearInterval(checkInterval);
+                    statusMessage.textContent = 'Connection timeout. Please try again.';
+                    setTimeout(() => {
+                        submitBtn.classList.remove('hidden');
+                        submitBtn.disabled = false;
+                        loadingSpinner.style.display = 'none';
+                        isSubmitting = false;
+                        checkCount = 0;
+                    }, 2000);
                 }
             }, 30000);
-        }, 3000); // Start checking 3 seconds after submission
+        }, 500); // Start checking after only 500ms
         
         // Allow form to submit naturally
         return true;
