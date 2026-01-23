@@ -29,8 +29,7 @@ def get_mikrotik_api():
             if has_app_context():
                 cfg = current_app.config
                 host = cfg.get('MIKROTIK_HOST')
-                # Support both new and legacy keys
-                username = cfg.get('MIKROTIK_USERNAME') or cfg.get('MIKROTIK_USER')
+                username = cfg.get('MIKROTIK_USERNAME')
                 password = cfg.get('MIKROTIK_PASSWORD')
                 port = cfg.get('MIKROTIK_PORT')
                 use_ssl = cfg.get('MIKROTIK_USE_SSL')
@@ -40,7 +39,7 @@ def get_mikrotik_api():
 
         # Fallback to environment variables if config missing
         host = host or os.getenv('MIKROTIK_HOST', '192.168.88.1')
-        username = username or os.getenv('MIKROTIK_USERNAME') or os.getenv('MIKROTIK_USER', 'admin')
+        username = username or os.getenv('MIKROTIK_USERNAME', 'admin')
         password = password or os.getenv('MIKROTIK_PASSWORD', '')
         port = int(port or os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = bool(use_ssl) if use_ssl is not None else (os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true')
@@ -75,10 +74,10 @@ def get_mikrotik_api():
                 else:
                     api = RouterOsApiPool(host, username=username, password=password,
                                           port=attempt_port, use_ssl=attempt_ssl)
-                print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
+                print(f"[DEBUG] OK Connected successfully using: {attempt_name}")
                 return api
             except Exception as e:
-                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:200]}")
+                print(f"[DEBUG] X Failed {attempt_name}: {str(e)[:200]}")
                 continue
 
         raise Exception("All connection attempts failed")
@@ -146,8 +145,8 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
     """Authorize a MAC for hotspot: use IP binding with bypassed type for immediate access."""
     api_pool = get_mikrotik_api()
     if not api_pool:
-        print(f"[MIKROTIK] Failed to connect - allowing MAC {mac_address} locally")
-        return True
+        print(f"[MIKROTIK] Failed to connect - BLOCKING MAC {mac_address}")
+        raise Exception("Cannot connect to MikroTik router. Authorization failed.")
 
     hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER', 'hotspot1')
 
@@ -167,16 +166,18 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
                     print(f"[MIKROTIK] Updated binding for MAC {mac_address} to bypassed")
                 else:
                     print(f"[MIKROTIK] Warning: binding record missing id: {binding[0]}")
+                    raise Exception("Binding record missing ID")
             else:
                 ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed', 'server': hotspot_server})
                 print(f"[MIKROTIK] Added bypassed binding for MAC {mac_address}")
         except Exception as e:
             print(f"[MIKROTIK] Error setting up IP binding: {str(e)}")
+            raise Exception(f"Failed to set up IP binding: {str(e)}")
 
         return True
     except Exception as e:
         print(f"[MIKROTIK] Error allowing MAC {mac_address}: {str(e)}")
-        return True  # Don't fail if API is down
+        raise  # Re-raise the exception instead of returning True
     finally:
         try:
             api_pool.disconnect()
@@ -244,6 +245,37 @@ def get_mac_from_active_session(client_ip):
         except Exception:
             pass
     
+    return None
+
+def get_mac_from_arp(ip_address):
+    """
+    Get MAC address from MikroTik ARP table by IP address.
+    """
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        # Fallback for development/testing when no router is connected
+        print(f"[MIKROTIK] Connection unavailable, cannot resolve ARP for {ip_address}")
+        return None
+
+    try:
+        api = api_pool.get_api()
+        # Look up in ARP table
+        arp_entries = api.get_resource('/ip/arp').get(**{'address': ip_address})
+        
+        if arp_entries and isinstance(arp_entries, list) and len(arp_entries) > 0:
+            mac = arp_entries[0].get('mac-address')
+            print(f"[MIKROTIK] Found ARP entry for IP {ip_address}: MAC {mac}")
+            return mac
+        
+        print(f"[MIKROTIK] No ARP entry found for IP {ip_address}")
+    except Exception as e:
+        print(f"[MIKROTIK] Error looking up ARP for IP {ip_address}: {str(e)}")
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+            
     return None
 
 def get_mikrotik_active_hotspot_users(api_pool=None):
@@ -342,8 +374,11 @@ def get_mikrotik_health(api_pool=None):
 
 
 def get_server_stats():
-    """Get server PC statistics. Currently returns mock data for Raspberry Pi 4."""
-    # Mock data for Raspberry Pi 4
+    """Get server PC statistics from actual system data (Raspberry Pi or Linux)."""
+    import subprocess
+    import psutil
+    
+    # Mock data fallback
     mock_data = {
         "model": "Raspberry Pi 4 Model B",
         "cpu_model": "Quad-core Cortex-A72 (ARM v8) 64-bit SoC @ 1.5GHz",
@@ -358,7 +393,105 @@ def get_server_stats():
         "kernel": "Linux 6.1.21-v8+"
     }
     
-    return mock_data
+    try:
+        data = {}
+        
+        # Get Raspberry Pi Model
+        try:
+            with open('/proc/device-tree/model', 'r') as f:
+                data['model'] = f.read().strip('\x00')
+        except:
+            data['model'] = "Unknown Device"
+        
+        # Get CPU Model from /proc/cpuinfo
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                cpuinfo = f.read()
+                # Extract hardware info
+                for line in cpuinfo.split('\n'):
+                    if line.startswith('Hardware'):
+                        data['cpu_model'] = line.split(':', 1)[1].strip()
+                        break
+                else:
+                    data['cpu_model'] = "ARM Processor"
+        except:
+            data['cpu_model'] = "Unknown CPU"
+        
+        # Get CPU cores count
+        data['cpu_cores'] = psutil.cpu_count(logical=False)
+        
+        # Get CPU usage percentage
+        data['cpu_usage'] = psutil.cpu_percent(interval=0.1)
+        
+        # Get Memory info (in MB)
+        memory = psutil.virtual_memory()
+        data['total_memory'] = int(memory.total / (1024 * 1024))
+        data['used_memory'] = int(memory.used / (1024 * 1024))
+        data['free_memory'] = int(memory.available / (1024 * 1024))
+        
+        # Get Uptime
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = int(float(f.read().split()[0]))
+                days, remainder = divmod(uptime_seconds, 86400)
+                hours, remainder = divmod(remainder, 3600)
+                minutes, _ = divmod(remainder, 60)
+                
+                if days > 0:
+                    data['uptime'] = f"{days}d {hours}h {minutes}m"
+                elif hours > 0:
+                    data['uptime'] = f"{hours}h {minutes}m"
+                else:
+                    data['uptime'] = f"{minutes}m"
+        except:
+            data['uptime'] = "0m"
+        
+        # Get CPU Temperature (Raspberry Pi specific)
+        data['temperature'] = "N/A"
+        try:
+            # Try Raspberry Pi thermal zone
+            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                temp_millidegrees = int(f.read().strip())
+                temp_celsius = temp_millidegrees / 1000
+                data['temperature'] = f"{temp_celsius:.1f}°C"
+        except:
+            try:
+                # Alternative: Try vcgencmd (if available on RPi)
+                result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    # Output: temp=48.2'C
+                    temp_str = result.stdout.strip().split('=')[1]
+                    data['temperature'] = temp_str
+            except:
+                pass
+        
+        # Get OS Info
+        try:
+            with open('/etc/os-release', 'r') as f:
+                os_info = f.read()
+                for line in os_info.split('\n'):
+                    if line.startswith('PRETTY_NAME'):
+                        data['os'] = line.split('=', 1)[1].strip().strip('"')
+                        break
+                else:
+                    data['os'] = "Linux"
+        except:
+            data['os'] = "Linux"
+        
+        # Get Kernel version
+        try:
+            result = subprocess.run(['uname', '-r'], 
+                                  capture_output=True, text=True, timeout=2)
+            data['kernel'] = result.stdout.strip()
+        except:
+            data['kernel'] = "Unknown"
+        
+        return data
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to get server stats: {str(e)}")
+        return mock_data
 
 def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     """
