@@ -145,8 +145,8 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
     """Authorize a MAC for hotspot: use IP binding with bypassed type for immediate access."""
     api_pool = get_mikrotik_api()
     if not api_pool:
-        print(f"[MIKROTIK] Failed to connect - allowing MAC {mac_address} locally")
-        return True
+        print(f"[MIKROTIK] Failed to connect - BLOCKING MAC {mac_address}")
+        raise Exception("Cannot connect to MikroTik router. Authorization failed.")
 
     hotspot_server = os.getenv('MIKROTIK_HOTSPOT_SERVER', 'hotspot1')
 
@@ -166,16 +166,18 @@ def mikrotik_allow_mac(mac_address, duration_seconds):
                     print(f"[MIKROTIK] Updated binding for MAC {mac_address} to bypassed")
                 else:
                     print(f"[MIKROTIK] Warning: binding record missing id: {binding[0]}")
+                    raise Exception("Binding record missing ID")
             else:
                 ip_bindings.add(**{'mac-address': mac_address, 'type': 'bypassed', 'server': hotspot_server})
                 print(f"[MIKROTIK] Added bypassed binding for MAC {mac_address}")
         except Exception as e:
             print(f"[MIKROTIK] Error setting up IP binding: {str(e)}")
+            raise Exception(f"Failed to set up IP binding: {str(e)}")
 
         return True
     except Exception as e:
         print(f"[MIKROTIK] Error allowing MAC {mac_address}: {str(e)}")
-        return True  # Don't fail if API is down
+        raise  # Re-raise the exception instead of returning True
     finally:
         try:
             api_pool.disconnect()
