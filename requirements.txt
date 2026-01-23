@@ -5,3 +5,4 @@ routeros-api==0.21.0
 flask_login==0.6.3
 customtkinter
 APScheduler==3.10.4
+psutil==5.9.0

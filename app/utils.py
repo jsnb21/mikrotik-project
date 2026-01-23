@@ -373,8 +373,11 @@ def get_mikrotik_health(api_pool=None):
 
 
 def get_server_stats():
-    """Get server PC statistics. Currently returns mock data for Raspberry Pi 4."""
-    # Mock data for Raspberry Pi 4
+    """Get server PC statistics from actual system data (Raspberry Pi or Linux)."""
+    import subprocess
+    import psutil
+    
+    # Mock data fallback
     mock_data = {
         "model": "Raspberry Pi 4 Model B",
         "cpu_model": "Quad-core Cortex-A72 (ARM v8) 64-bit SoC @ 1.5GHz",
@@ -389,7 +392,105 @@ def get_server_stats():
         "kernel": "Linux 6.1.21-v8+"
     }
     
-    return mock_data
+    try:
+        data = {}
+        
+        # Get Raspberry Pi Model
+        try:
+            with open('/proc/device-tree/model', 'r') as f:
+                data['model'] = f.read().strip('\x00')
+        except:
+            data['model'] = "Unknown Device"
+        
+        # Get CPU Model from /proc/cpuinfo
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                cpuinfo = f.read()
+                # Extract hardware info
+                for line in cpuinfo.split('\n'):
+                    if line.startswith('Hardware'):
+                        data['cpu_model'] = line.split(':', 1)[1].strip()
+                        break
+                else:
+                    data['cpu_model'] = "ARM Processor"
+        except:
+            data['cpu_model'] = "Unknown CPU"
+        
+        # Get CPU cores count
+        data['cpu_cores'] = psutil.cpu_count(logical=False)
+        
+        # Get CPU usage percentage
+        data['cpu_usage'] = psutil.cpu_percent(interval=0.1)
+        
+        # Get Memory info (in MB)
+        memory = psutil.virtual_memory()
+        data['total_memory'] = int(memory.total / (1024 * 1024))
+        data['used_memory'] = int(memory.used / (1024 * 1024))
+        data['free_memory'] = int(memory.available / (1024 * 1024))
+        
+        # Get Uptime
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = int(float(f.read().split()[0]))
+                days, remainder = divmod(uptime_seconds, 86400)
+                hours, remainder = divmod(remainder, 3600)
+                minutes, _ = divmod(remainder, 60)
+                
+                if days > 0:
+                    data['uptime'] = f"{days}d {hours}h {minutes}m"
+                elif hours > 0:
+                    data['uptime'] = f"{hours}h {minutes}m"
+                else:
+                    data['uptime'] = f"{minutes}m"
+        except:
+            data['uptime'] = "0m"
+        
+        # Get CPU Temperature (Raspberry Pi specific)
+        data['temperature'] = "N/A"
+        try:
+            # Try Raspberry Pi thermal zone
+            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                temp_millidegrees = int(f.read().strip())
+                temp_celsius = temp_millidegrees / 1000
+                data['temperature'] = f"{temp_celsius:.1f}°C"
+        except:
+            try:
+                # Alternative: Try vcgencmd (if available on RPi)
+                result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    # Output: temp=48.2'C
+                    temp_str = result.stdout.strip().split('=')[1]
+                    data['temperature'] = temp_str
+            except:
+                pass
+        
+        # Get OS Info
+        try:
+            with open('/etc/os-release', 'r') as f:
+                os_info = f.read()
+                for line in os_info.split('\n'):
+                    if line.startswith('PRETTY_NAME'):
+                        data['os'] = line.split('=', 1)[1].strip().strip('"')
+                        break
+                else:
+                    data['os'] = "Linux"
+        except:
+            data['os'] = "Linux"
+        
+        # Get Kernel version
+        try:
+            result = subprocess.run(['uname', '-r'], 
+                                  capture_output=True, text=True, timeout=2)
+            data['kernel'] = result.stdout.strip()
+        except:
+            data['kernel'] = "Unknown"
+        
+        return data
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to get server stats: {str(e)}")
+        return mock_data
 
 def get_mikrotik_interface_traffic(interface_name=None, api_pool=None):
     """
