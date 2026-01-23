@@ -1,10 +1,14 @@
-from flask import render_template, request, redirect, url_for, flash, current_app
+from flask import render_template, request, redirect, url_for, flash, current_app, jsonify
 from flask_login import login_required, current_user
 from . import admin_bp
 from .. import db
 from ..models import Admin, Voucher
 import string
 import secrets
+import os
+import signal
+import subprocess
+import sys
 
 
 @admin_bp.before_request
@@ -39,29 +43,10 @@ def dashboard():
         if api_pool:
             pass
 
-    # Fallback: if RouterOS active list is empty, use locally activated vouchers with time remaining
+    # Only show users that are actually active on MikroTik router
+    # No database fallback - dashboard should reflect real MikroTik state
     if not active_users:
-        db_active_users = []
-        vouchers = Voucher.query.filter(
-            Voucher.activated_at != None,
-            Voucher.expires_at != None,
-            Voucher.user_mac_address != None
-        ).all()
-        for v in vouchers:
-            if v.remaining_seconds > 0:
-                secs = v.remaining_seconds
-                hours, rem = divmod(secs, 3600)
-                minutes, _ = divmod(rem, 60)
-                time_left = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-                db_active_users.append({
-                    "user": v.code,
-                    "mac": v.user_mac_address,
-                    "uptime": "Activated",
-                    "bytes_in": 0,
-                    "bytes_out": 0,
-                    "time_left": time_left
-                })
-        active_users = db_active_users
+        active_users = []
 
     # Treat mock uptime marker as disconnected
     connection_ok = system_stats.get('uptime') != 'Offline (Mock)'
@@ -124,3 +109,82 @@ def reset_vouchers():
         db.session.rollback()
         flash(f"Error resetting vouchers: {str(e)}", "error")
     return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/api/profiles', methods=['GET'])
+def get_profiles():
+    """Get list of available voucher profiles"""
+    import json
+    profiles_file = 'profiles.json'
+    
+    try:
+        if os.path.exists(profiles_file):
+            with open(profiles_file, 'r') as f:
+                profiles = json.load(f)
+        else:
+            profiles = []
+        return jsonify(profiles)
+    except Exception as e:
+        return jsonify([]), 500
+
+
+@admin_bp.route('/api/generate-vouchers', methods=['POST'])
+def generate_vouchers():
+    """Generate vouchers based on selected profile"""
+    import json
+    
+    try:
+        data = request.get_json()
+        profile_name = data.get('profile')
+        quantity = int(data.get('quantity', 1))
+        
+        if not profile_name:
+            return jsonify({'success': False, 'error': 'Profile name is required'}), 400
+            
+        if quantity < 1 or quantity > 100:
+            return jsonify({'success': False, 'error': 'Quantity must be between 1 and 100'}), 400
+        
+        # Load profiles
+        profiles_file = 'profiles.json'
+        if not os.path.exists(profiles_file):
+            return jsonify({'success': False, 'error': 'Profiles file not found'}), 404
+            
+        with open(profiles_file, 'r') as f:
+            profiles = json.load(f)
+        
+        # Find the selected profile
+        profile = next((p for p in profiles if p['name'] == profile_name), None)
+        if not profile:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+        
+        # Parse validity to seconds
+        validity_str = profile['validity']
+        if validity_str.endswith('m'):
+            duration_seconds = int(validity_str[:-1]) * 60
+        elif validity_str.endswith('h'):
+            duration_seconds = int(validity_str[:-1]) * 3600
+        elif validity_str.endswith('d'):
+            duration_seconds = int(validity_str[:-1]) * 86400
+        else:
+            return jsonify({'success': False, 'error': 'Invalid validity format'}), 400
+        
+        # Generate vouchers
+        voucher_codes = []
+        for _ in range(quantity):
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+            voucher = Voucher(code=code, duration=duration_seconds)
+            db.session.add(voucher)
+            voucher_codes.append(code)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'vouchers': voucher_codes,
+            'profile': profile_name,
+            'quantity': quantity
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
