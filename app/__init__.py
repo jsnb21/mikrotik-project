@@ -1,12 +1,17 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from config import Config
+from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
+# Load environment variables from a .env file before importing Config
+load_dotenv()
+from config import Config
+
 db = SQLAlchemy()
 login_manager = LoginManager()
+# Send unauthorized users to the admin login page
 login_manager.login_view = 'main.login'
 scheduler = None
 
@@ -81,14 +86,18 @@ def create_app(config_class=Config):
                             id='check_expired_vouchers',
                             replace_existing=True)
             scheduler.start()
-            print("[SCHEDULER] Started automatic voucher expiration monitor (every 15 seconds)")
+            print("[SCHEDULER] Started automatic voucher expiration monitor (every 30 seconds)")
             
             # Shutdown scheduler when app exits
             atexit.register(lambda: scheduler.shutdown())
 
-    # Register Blueprint
+    # Register Blueprints
     from .routes import bp as main_bp
+    from .admin import admin_bp
+    from .client import client_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(client_bp)
 
     return app
 

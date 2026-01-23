@@ -80,9 +80,38 @@ class CustomMessageBox(ctk.CTkToplevel):
         # OK Button
         self.btn_ok = ctk.CTkButton(self, text="OK", command=self.destroy, width=100, fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 14, "bold"))
         self.btn_ok.pack(pady=(0, 20))
-        
-        self.grab_set()
-        self.focus_force()
+        # Try to grab input for modal behavior, but the window may not be
+        # viewable immediately (causes TclError: grab failed: window not viewable).
+        # Schedule a few retries instead of calling grab_set() directly.
+        self._grab_attempts = 0
+        self._max_grab_attempts = 6
+        # ensure geometry is calculated
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
+
+        # Try to grab after a short delay so the window manager has time to map it.
+        self.after(20, self._try_grab)
+
+    def _try_grab(self):
+        try:
+            self.grab_set()
+            try:
+                self.focus_force()
+            except Exception:
+                pass
+        except tk.TclError:
+            # Window not viewable yet. Retry a few times with short delay, then give up.
+            self._grab_attempts += 1
+            if self._grab_attempts < self._max_grab_attempts:
+                try:
+                    self.after(50, self._try_grab)
+                except Exception:
+                    pass
+            else:
+                # Last-resort: don't block the application if grabbing never succeeds.
+                pass
 
 class ToolTip(object):
     def __init__(self, widget, text):
@@ -144,8 +173,14 @@ class PisonetManager(ctk.CTk):
         self.setup_ui()
         self.load_profiles()
         
+        # Set up window close handler to revoke users on exit
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         # Start logging loop
         self.update_log_display()
+        
+        # Auto-start server if enabled
+        self.after(500, self.check_autostart_and_start)
 
     def setup_logging(self):
         self.log_queue = queue.Queue()
@@ -369,13 +404,112 @@ class PisonetManager(ctk.CTk):
         self.flask_thread = None
         self.server = None
         self.draw_status_indicator(("black", "gray"))
-        self.status_label.configure(text="Server Stopped")
+
+    def check_autostart_and_start(self):
+        """Check if auto-start is enabled and start server if so."""
+        try:
+            auto_start = self.get_setting("AUTO_START_SERVER")
+            if auto_start and auto_start.lower() == 'true':
+                print("[AUTO-START] Starting server automatically...")
+                self.start_server()
+        except Exception as e:
+            print(f"[AUTO-START] Error: {e}")
+
+    def get_setting(self, key, default=''):
+        """Get a setting from .env file."""
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                for line in f:
+                    if '=' in line and not line.strip().startswith('#'):
+                        k, v = line.strip().split('=', 1)
+                        if k == key:
+                            return v
+        return default
+
+    def set_setting(self, key, value):
+        """Set a setting in .env file."""
+        lines = []
+        if os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                lines = f.readlines()
         
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Server stopped.")
+        found = False
+        new_lines = []
+        for line in lines:
+            line_stripped = line.strip()
+            if '=' in line_stripped and not line_stripped.startswith('#'):
+                k = line_stripped.split('=')[0].strip()
+                if k == key:
+                    new_lines.append(f"{key}={value}\n")
+                    found = True
+                else:
+                    new_lines.append(line)
+            else:
+                new_lines.append(line)
         
-        # Update dashboard button state
-        self.frames["DashboardView"].btn_start.configure(state="normal", text="Start Server")
-        self.frames["DashboardView"].btn_stop.configure(state="disabled")
+        if not found:
+            new_lines.append(f"{key}={value}\n")
+        
+        try:
+            with open('.env', 'w') as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            print(f"Error saving setting: {e}")
+
+    def on_closing(self):
+        """Handle app closing: revoke all active users if server is running."""
+        if self.is_server_running:
+            # Show warning and ask for confirmation
+            root = tk.Tk()
+            root.withdraw()
+            
+            result = messagebox.askyesno(
+                "Confirm Close",
+                "⚠️ WARNING: The server is currently running.\n\n"
+                "Closing the app will REVOKE ACCESS to all active users!\n\n"
+                "Do you want to continue?"
+            )
+            root.destroy()
+            
+            if not result:
+                return  # User clicked No, don't close
+            
+            # Revoke all active users
+            print("[CLOSE] Revoking access for all active users...")
+            try:
+                from app.utils import mikrotik_revoke_mac
+                with self.flask_app.app_context():
+                    from app.models import Voucher
+                    vouchers = Voucher.query.filter(
+                        Voucher.activated_at != None,
+                        Voucher.user_mac_address != None
+                    ).all()
+                    
+                    for v in vouchers:
+                        if v.user_mac_address:
+                            try:
+                                if mikrotik_revoke_mac(v.user_mac_address):
+                                    # Successfully revoked (or already gone), clear from DB
+                                    v.user_mac_address = None
+                                    db.session.commit()
+                                    print(f"[CLOSE] Cleared: {v.code}")
+                            except Exception as e:
+                                print(f"[CLOSE] Error revoking {v.code}: {e}")
+            except Exception as e:
+                print(f"[CLOSE] Error during user revocation: {e}")
+            
+            # Stop server
+            self.stop_server()
+        
+        # Try to update UI before destroying (may fail if widgets already gone)
+        try:
+            self.status_label.configure(text="Server Stopped")
+            self.draw_status_indicator(("black", "gray"))
+        except:
+            pass  # Widget already destroyed
+        
+        # Close the app
+        self.destroy()
 
 
 class DashboardView(ctk.CTkFrame):
@@ -537,6 +671,7 @@ class HotspotView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self.tab_users, fg_color="transparent")
         toolbar.pack(fill=tk.X, pady=(0, 10))
         ctk.CTkButton(toolbar, text="Refresh", command=self.load_users, width=100, fg_color="#4b7178", hover_color="#3a585e", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+        ctk.CTkButton(toolbar, text="Revoke All Access", command=self.revoke_all_users, width=150, fg_color="#ff5f52", hover_color="#e65549", text_color="white", font=("Arial", 12, "bold")).pack(side=tk.RIGHT, padx=5)
 
         # Treeview Container (for scrollbar)
         tree_frame = ctk.CTkFrame(self.tab_users)
@@ -579,6 +714,48 @@ class HotspotView(ctk.CTkFrame):
             for v in vouchers:
                 if v.remaining_seconds > 0:
                     self.tree_users.insert("", "end", values=(v.code, v.user_mac_address, "Activated", "-"))
+
+    def revoke_all_users(self):
+        """Revoke access for all active users with confirmation."""
+        root = tk.Tk()
+        root.withdraw()
+        
+        result = messagebox.askyesno(
+            "Confirm Revoke All",
+            "⚠️ This will REVOKE ACCESS for all active users!\n\n"
+            "Do you want to continue?"
+        )
+        root.destroy()
+        
+        if not result:
+            return
+        
+        print("[HOTSPOT] Revoking all active users...")
+        revoked_count = 0
+        try:
+            from app.utils import mikrotik_revoke_mac
+            with self.controller.flask_app.app_context():
+                vouchers = Voucher.query.filter(
+                    Voucher.activated_at != None,
+                    Voucher.user_mac_address != None
+                ).all()
+                
+                for v in vouchers:
+                    if v.user_mac_address and v.remaining_seconds > 0:
+                        try:
+                            if mikrotik_revoke_mac(v.user_mac_address):
+                                # Successfully revoked (or already gone), clear from DB
+                                v.user_mac_address = None
+                                db.session.commit()
+                                revoked_count += 1
+                                print(f"[HOTSPOT] Cleared: {v.code}")
+                        except Exception as e:
+                            print(f"[HOTSPOT] Error revoking {v.code}: {e}")
+        except Exception as e:
+            print(f"[HOTSPOT] Error during revoke all: {e}")
+        
+        self.load_users()  # Refresh the list
+        CustomMessageBox("Success", f"Revoked access for {revoked_count} user(s).", "success")
 
     def setup_profiles_tab(self):
         # Toolbar
@@ -676,10 +853,16 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkFrame.__init__(self, parent, fg_color="transparent")
         self.controller = controller
         
-        ctk.CTkLabel(self, text="Settings", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(0, 20))
+        # Title
+        title_label = ctk.CTkLabel(self, text="Settings", font=("Helvetica", 24, "bold"))
+        title_label.pack(anchor="w", pady=(0, 20), padx=10)
+        
+        # Create scrollable frame
+        self.scrollable_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scrollable_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
         # Router Configuration Frame
-        config_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        config_frame = ctk.CTkFrame(self.scrollable_frame, border_width=2, border_color="#E0E0E0")
         config_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkLabel(config_frame, text="MikroTik Router Configuration", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
@@ -696,7 +879,7 @@ class SettingsView(ctk.CTkFrame):
         self.create_entry(form_frame, "WAN Interface:", "MIKROTIK_WAN_INTERFACE", 4)
         
         # Buttons
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(self.scrollable_frame, fg_color="transparent")
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkButton(btn_frame, text="Test Connection", command=self.test_connection, 
@@ -706,7 +889,7 @@ class SettingsView(ctk.CTkFrame):
                       fg_color="#ffd41d", hover_color="#e6c019", text_color="black", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
         
         # Database Management Frame
-        db_frame = ctk.CTkFrame(self, border_width=2, border_color="#E0E0E0")
+        db_frame = ctk.CTkFrame(self.scrollable_frame, border_width=2, border_color="#E0E0E0")
         db_frame.pack(fill=tk.X, padx=10, pady=10)
         
         ctk.CTkLabel(db_frame, text="Database Management", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
@@ -719,6 +902,21 @@ class SettingsView(ctk.CTkFrame):
                       
         ctk.CTkButton(db_btn_frame, text="Clear Database", command=self.clear_database,
                       fg_color="#ff5f52", hover_color="#e65549", text_color="white", font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        # Application Settings Frame
+        app_frame = ctk.CTkFrame(self.scrollable_frame, border_width=2, border_color="#E0E0E0")
+        app_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ctk.CTkLabel(app_frame, text="Application Settings", font=("Arial", 16, "bold")).pack(anchor="w", padx=15, pady=10)
+        
+        app_settings_frame = ctk.CTkFrame(app_frame, fg_color="transparent")
+        app_settings_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        
+        setting_label = ctk.CTkLabel(app_settings_frame, text="Auto-Start Server on Launch:", font=("Arial", 12))
+        setting_label.pack(side=tk.LEFT, padx=5, pady=5)
+        self.autostart_var = tk.BooleanVar()
+        self.autostart_checkbox = ctk.CTkCheckBox(app_settings_frame, text="Enabled", variable=self.autostart_var, command=self.toggle_autostart)
+        self.autostart_checkbox.pack(side=tk.LEFT, padx=10, pady=5)
         
         self.load_settings()
 
@@ -758,6 +956,10 @@ class SettingsView(ctk.CTkFrame):
                 
             entry.delete(0, tk.END)
             entry.insert(0, val)
+        
+        # Load auto-start setting
+        auto_start = env_vars.get("AUTO_START_SERVER", "false")
+        self.autostart_var.set(auto_start.lower() == 'true')
 
     def save_settings(self):
         # Read current .env
@@ -865,6 +1067,13 @@ class SettingsView(ctk.CTkFrame):
 
         # Run in thread to not freeze UI
         threading.Thread(target=run_test, daemon=True).start()
+
+    def toggle_autostart(self):
+        """Toggle auto-start setting when checkbox is clicked."""
+        value = "true" if self.autostart_var.get() else "false"
+        self.controller.set_setting("AUTO_START_SERVER", value)
+        status = "enabled" if self.autostart_var.get() else "disabled"
+        self.controller.show_notification(f"Auto-start {status}", 2000)
 
     def backup_database(self):
         """Backup the database to instance/backups directory."""
