@@ -91,12 +91,12 @@
     const statusMessage = document.getElementById('statusMessage');
     
     let isSubmitting = false;
-    let checkInterval = null;
-    let checkCount = 0;
+    let activationStarted = false;
     
     form.addEventListener('submit', function(e) {
+        e.preventDefault(); // Prevent default form submission
+        
         if (isSubmitting) {
-            e.preventDefault();
             return false;
         }
         
@@ -105,64 +105,85 @@
         submitBtn.classList.add('hidden');
         loadingSpinner.style.display = 'block';
         
-        // Get the voucher code
+        // Get form data
         const voucherCode = document.getElementById('voucher_code').value.trim().toUpperCase();
+        const formData = new FormData(form);
         
-        // Update status messages progressively
-        const updateStatus = () => {
-            checkCount++;
-            if (checkCount === 1) {
-                statusMessage.textContent = 'Validating voucher...';
-            } else if (checkCount === 2) {
-                statusMessage.textContent = 'Authorizing with MikroTik...';
-            } else if (checkCount >= 3) {
-                statusMessage.textContent = 'Activating session...';
-            }
-        };
+        // Show initial status
+        statusMessage.textContent = 'Validating voucher...';
         
-        // Start checking for activation immediately with faster polling
-        setTimeout(function() {
-            updateStatus();
-            
-            checkInterval = setInterval(function() {
-                fetch('/api/status/' + voucherCode)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.active && data.remaining_seconds > 0) {
-                            clearInterval(checkInterval);
-                            statusMessage.textContent = 'Connected! Redirecting...';
-                            // Immediate redirect
-                            setTimeout(() => {
-                                window.location.href = '/status?code=' + voucherCode;
-                            }, 200);
-                        } else {
-                            updateStatus();
-                        }
-                    })
-                    .catch(err => {
-                        console.log('Status check:', err);
-                        updateStatus();
-                    });
-            }, 500); // Check every 500ms for faster response
-            
-            // Stop checking after 30 seconds
-            setTimeout(function() {
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                    statusMessage.textContent = 'Connection timeout. Please try again.';
+        // Submit via AJAX for better control
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            redirect: 'manual' // Don't follow redirects automatically
+        })
+        .then(response => {
+            if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) {
+                // Activation successful! Start polling immediately
+                statusMessage.textContent = 'Authorized! Connecting...';
+                activationStarted = true;
+                
+                // Fast polling to detect activation
+                let pollCount = 0;
+                const pollInterval = setInterval(function() {
+                    pollCount++;
+                    
+                    fetch('/api/status/' + voucherCode)
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.active && data.remaining_seconds > 0) {
+                                clearInterval(pollInterval);
+                                statusMessage.textContent = 'Connected! Redirecting...';
+                                setTimeout(() => {
+                                    window.location.href = '/status?code=' + voucherCode;
+                                }, 100);
+                            }
+                        })
+                        .catch(err => console.log('Poll:', err));
+                    
+                    // Stop after 20 attempts (10 seconds)
+                    if (pollCount > 20) {
+                        clearInterval(pollInterval);
+                        // Just redirect anyway
+                        window.location.href = '/status?code=' + voucherCode;
+                    }
+                }, 500);
+            } else {
+                // Handle errors - response is HTML with error message
+                return response.text().then(html => {
+                    // Try to extract error message
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const alert = doc.querySelector('.alert-error');
+                    const errorMsg = alert ? alert.textContent.trim() : 'Activation failed';
+                    
+                    statusMessage.textContent = errorMsg;
+                    statusMessage.style.color = '#dc2626';
+                    
                     setTimeout(() => {
                         submitBtn.classList.remove('hidden');
                         submitBtn.disabled = false;
                         loadingSpinner.style.display = 'none';
                         isSubmitting = false;
-                        checkCount = 0;
-                    }, 2000);
-                }
-            }, 30000);
-        }, 500); // Start checking after only 500ms
+                    }, 3000);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Activation error:', error);
+            statusMessage.textContent = 'Connection error. Please try again.';
+            statusMessage.style.color = '#dc2626';
+            
+            setTimeout(() => {
+                submitBtn.classList.remove('hidden');
+                submitBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                isSubmitting = false;
+            }, 3000);
+        });
         
-        // Allow form to submit naturally
-        return true;
+        return false;
     });
 </script>
 {% endblock %}
