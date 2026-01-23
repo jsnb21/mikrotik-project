@@ -63,6 +63,7 @@ def index():
         mac_address = get_mac_from_active_session(client_ip)
     
     # Check if MAC address has an active voucher
+    detected_code = None
     if mac_address:
         active_voucher = Voucher.query.filter(
             Voucher.user_mac_address == mac_address,
@@ -74,15 +75,25 @@ def index():
             session['hotspot_mac'] = mac_address  # Store MAC in session
             current_app.logger.info("Index: Redirecting to status: code=%s MAC=%s", active_voucher.code, mac_address)
             return redirect(url_for('client.status_page', code=active_voucher.code))
+        
+        # Check for non-activated vouchers for this MAC (recently used)
+        recent_voucher = Voucher.query.filter(
+            Voucher.user_mac_address == mac_address
+        ).order_by(Voucher.activated_at.desc()).first()
+        
+        if recent_voucher:
+            detected_code = recent_voucher.code
+            current_app.logger.info("Index: Auto-detected code %s for MAC %s", detected_code, mac_address)
 
     # If called from MikroTik hotspot, use hotspot template
     if mac_address:
         return render_template('voucher_login.html', 
                              mac_address=mac_address,
                              ip_address=ip_address,
-                             link_orig=link_orig)
+                             link_orig=link_orig,
+                             detected_code=detected_code)
     
-    return render_template('index.html')
+    return render_template('index.html', detected_code=detected_code)
 
 
 @client_bp.route('/design')

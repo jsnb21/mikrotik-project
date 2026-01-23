@@ -36,6 +36,7 @@
                         class="voucher-input"
                         placeholder="000000" 
                         maxlength="6"
+                        {% if detected_code %}value="{{ detected_code }}"{% endif %}
                         required
                         autofocus
                     >
