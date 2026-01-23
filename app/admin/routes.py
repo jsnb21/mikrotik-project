@@ -130,58 +130,80 @@ def reset_vouchers():
     return redirect(url_for('admin.dashboard'))
 
 
-@admin_bp.route('/server-control/<action>', methods=['POST', 'GET'])
-def server_control(action):
-    """Control the Flask server: start, stop, or restart.
-    Note: GET requests just return status, POST performs action."""
+@admin_bp.route('/api/profiles', methods=['GET'])
+def get_profiles():
+    """Get list of available voucher profiles"""
+    import json
+    profiles_file = 'profiles.json'
     
-    # Handle GET requests (status check)
-    if request.method == 'GET':
+    try:
+        if os.path.exists(profiles_file):
+            with open(profiles_file, 'r') as f:
+                profiles = json.load(f)
+        else:
+            profiles = []
+        return jsonify(profiles)
+    except Exception as e:
+        return jsonify([]), 500
+
+
+@admin_bp.route('/api/generate-vouchers', methods=['POST'])
+def generate_vouchers():
+    """Generate vouchers based on selected profile"""
+    import json
+    
+    try:
+        data = request.get_json()
+        profile_name = data.get('profile')
+        quantity = int(data.get('quantity', 1))
+        
+        if not profile_name:
+            return jsonify({'success': False, 'error': 'Profile name is required'}), 400
+            
+        if quantity < 1 or quantity > 100:
+            return jsonify({'success': False, 'error': 'Quantity must be between 1 and 100'}), 400
+        
+        # Load profiles
+        profiles_file = 'profiles.json'
+        if not os.path.exists(profiles_file):
+            return jsonify({'success': False, 'error': 'Profiles file not found'}), 404
+            
+        with open(profiles_file, 'r') as f:
+            profiles = json.load(f)
+        
+        # Find the selected profile
+        profile = next((p for p in profiles if p['name'] == profile_name), None)
+        if not profile:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+        
+        # Parse validity to seconds
+        validity_str = profile['validity']
+        if validity_str.endswith('m'):
+            duration_seconds = int(validity_str[:-1]) * 60
+        elif validity_str.endswith('h'):
+            duration_seconds = int(validity_str[:-1]) * 3600
+        elif validity_str.endswith('d'):
+            duration_seconds = int(validity_str[:-1]) * 86400
+        else:
+            return jsonify({'success': False, 'error': 'Invalid validity format'}), 400
+        
+        # Generate vouchers
+        voucher_codes = []
+        for _ in range(quantity):
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            voucher = Voucher(code=code, duration=duration_seconds)
+            db.session.add(voucher)
+            voucher_codes.append(code)
+        
+        db.session.commit()
+        
         return jsonify({
             'success': True,
-            'message': 'Server is running',
-            'status': 'online'
-        }), 200
-    
-    # Handle POST requests (control actions)
-    try:
-        if action == 'stop':
-            # Stop the Flask server gracefully
-            func = request.environ.get('werkzeug.server.shutdown')
-            if func is None:
-                # Running in production mode, try to kill the process
-                if sys.platform.startswith('win'):
-                    os.system('taskkill /F /PID %d' % os.getpid())
-                else:
-                    os.kill(os.getpid(), signal.SIGTERM)
-                return jsonify({'success': True, 'message': 'Server stopping...'}), 200
-            else:
-                func()
-                return jsonify({'success': True, 'message': 'Server stopped successfully'}), 200
+            'vouchers': voucher_codes,
+            'profile': profile_name,
+            'quantity': quantity
+        })
         
-        elif action == 'restart':
-            # For restart, just return success - actual restart needs external process
-            return jsonify({
-                'success': True, 
-                'message': 'Server restart initiated. Please wait...'
-            }), 200
-        
-        elif action == 'start':
-            # Server is already running if we can respond
-            return jsonify({
-                'success': True, 
-                'message': 'Server is already running'
-            }), 200
-        
-        else:
-            return jsonify({
-                'success': False, 
-                'message': 'Invalid action. Use: start, stop, or restart'
-            }), 400
-    
     except Exception as e:
-        print(f"[ERROR] Server control failed: {str(e)}")
-        return jsonify({
-            'success': False, 
-            'message': f'Error: {str(e)}'
-        }), 500
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

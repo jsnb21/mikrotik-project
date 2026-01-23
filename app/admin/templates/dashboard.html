@@ -9,18 +9,6 @@
                 <h1 class="text-3xl font-bold text-[#0b343d] uppercase">Network Dashboard</h1>
                 <p class="text-gray-600 text-sm">Monitoring MikroTik Router via ROS API</p>
             </div>
-            <!-- Server Control Buttons -->
-            <div class="flex flex-wrap gap-2">
-                <button id="btn-restart" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded transition" onclick="controlServer('restart')">
-                    🔄 Restart
-                </button>
-                <button id="btn-stop" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded transition" onclick="controlServer('stop')">
-                    ⏹ Stop
-                </button>
-                <button id="btn-start" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded transition" onclick="controlServer('start')">
-                    ▶ Start
-                </button>
-            </div>
         </div>
     </div>
 
@@ -51,6 +39,9 @@
                     </button>
                     <button onclick="switchCategory('sales')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="sales">
                         <span>💰</span> Sales & Income
+                    </button>
+                    <button onclick="switchCategory('vouchers')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="vouchers">
+                        <span>🎫</span> Generate Vouchers
                     </button>
                     <button onclick="switchCategory('router')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="router">
                         <span>🖧</span> Router Info
@@ -217,6 +208,59 @@
                         <h2 class="text-sm uppercase font-bold mb-4">Vendo Total Sales</h2>
                         <p class="text-5xl font-bold">₱{{ income_stats.earned_year | default(0) }}</p>
                         <p class="text-gray-200 text-sm mt-2">Total Income (This Year)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate Vouchers Section -->
+            <div id="category-vouchers" class="category-content hidden">
+                <h2 class="text-2xl font-bold text-[#0b343d] mb-6 uppercase">Generate Vouchers</h2>
+                
+                <!-- Generation Form -->
+                <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
+                    <h3 class="text-lg font-bold text-[#0b343d] mb-4 uppercase flex items-center gap-2">
+                        <div class="w-2 h-6 bg-[#ffd41d]"></div>
+                        Select Options
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-2">Profile / Plan:</label>
+                                <select id="profile-select" class="w-full border-2 border-gray-200 rounded-lg p-3 text-[#0b343d] font-medium focus:border-[#4b7178] outline-none">
+                                    <option value="">Select a profile...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-2">Quantity:</label>
+                                <input type="number" id="voucher-qty" min="1" max="100" value="1" class="w-full border-2 border-gray-200 rounded-lg p-3 text-[#0b343d] font-medium focus:border-[#4b7178] outline-none">
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end">
+                            <button onclick="generateVouchers()" class="px-6 py-3 bg-[#ffd41d] hover:bg-[#e6c019] text-black font-bold rounded-lg transition uppercase">
+                                Generate Vouchers
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Generated Codes Display -->
+                <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+                    <h3 class="text-lg font-bold text-[#0b343d] mb-4 uppercase flex items-center gap-2">
+                        <div class="w-2 h-6 bg-[#0b343d]"></div>
+                        Generated Codes
+                    </h3>
+                    <div id="voucher-results" class="bg-gray-50 rounded-lg p-4 min-h-[300px] max-h-[400px] overflow-y-auto font-mono text-sm">
+                        <p class="text-gray-500 text-center py-8">No vouchers generated yet. Select a profile and click Generate.</p>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button onclick="copyAllVouchers()" class="px-4 py-2 bg-[#4b7178] hover:bg-[#3a585e] text-white font-bold rounded-lg transition">
+                            📋 Copy All
+                        </button>
+                        <button onclick="clearVoucherResults()" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold rounded-lg transition">
+                            Clear
+                        </button>
                     </div>
                 </div>
             </div>
@@ -460,68 +504,118 @@
             activeBtn.classList.add('active', 'bg-gradient-to-r', 'from-[#0b343d]', 'to-[#0f4d5e]', 'text-white', 'border-l-4', 'border-orange-500');
             activeBtn.classList.remove('text-gray-700');
         }
+        
+        // Load profiles when vouchers category is selected
+        if (categoryName === 'vouchers') {
+            loadProfiles();
+        }
     }
-
-    async function controlServer(action) {
-        const button = document.getElementById(`btn-${action}`);
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = 'Loading...';
-
+    
+    // Load profiles for voucher generation
+    async function loadProfiles() {
         try {
-            const response = await fetch(`/admin/server-control/${action}`, {
+            const response = await fetch('/admin/api/profiles');
+            const profiles = await response.json();
+            const select = document.getElementById('profile-select');
+            select.innerHTML = '<option value="">Select a profile...</option>';
+            profiles.forEach(profile => {
+                const option = document.createElement('option');
+                option.value = profile.name;
+                option.textContent = `${profile.name} - ₱${profile.price} (${profile.validity})`;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+        }
+    }
+    
+    // Generate vouchers
+    async function generateVouchers() {
+        const profileName = document.getElementById('profile-select').value;
+        const quantity = parseInt(document.getElementById('voucher-qty').value);
+        
+        if (!profileName) {
+            alert('Please select a profile');
+            return;
+        }
+        
+        if (quantity < 1 || quantity > 100) {
+            alert('Quantity must be between 1 and 100');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/admin/api/generate-vouchers', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify({
+                    profile: profileName,
+                    quantity: quantity
+                })
             });
-
+            
             const data = await response.json();
-
-            if (response.ok) {
-                showNotification(data.message, 'success');
-                
-                // Disable buttons after stop/restart
-                if (action === 'stop' || action === 'restart') {
-                    disableAllServerButtons();
-                    setTimeout(() => {
-                        if (action === 'restart') {
-                            showNotification('Server is restarting. Page will refresh when ready...', 'info');
-                            setTimeout(() => location.reload(), 3000);
-                        }
-                    }, 1000);
-                }
+            
+            if (data.success) {
+                displayVouchers(data.vouchers, profileName, quantity);
             } else {
-                showNotification(data.message || 'Error controlling server', 'error');
-                button.disabled = false;
-                button.textContent = originalText;
+                alert('Error: ' + data.error);
             }
         } catch (error) {
-            showNotification('Error: ' + error.message, 'error');
-            button.disabled = false;
-            button.textContent = originalText;
+            console.error('Error generating vouchers:', error);
+            alert('Failed to generate vouchers. Please try again.');
         }
     }
-
-    function disableAllServerButtons() {
-        document.getElementById('btn-restart').disabled = true;
-        document.getElementById('btn-stop').disabled = true;
-        document.getElementById('btn-start').disabled = true;
+    
+    // Display generated vouchers
+    function displayVouchers(vouchers, profileName, quantity) {
+        const resultsDiv = document.getElementById('voucher-results');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        let html = `<div class="mb-4 pb-4 border-b-2 border-gray-300">`;
+        html += `<p class="font-bold text-[#0b343d] mb-2">--- NEW BATCH (${timestamp}) ---</p>`;
+        html += `<p class="text-gray-600 mb-2">Profile: ${profileName} | Quantity: ${quantity}</p>`;
+        html += `<div class="space-y-1">`;
+        
+        vouchers.forEach(code => {
+            html += `<p class="text-[#0b343d] font-bold">${code}</p>`;
+        });
+        
+        html += `</div></div>`;
+        
+        if (resultsDiv.querySelector('p.text-gray-500')) {
+            resultsDiv.innerHTML = html;
+        } else {
+            resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+        }
     }
-
-    function showNotification(message, type) {
-        const colors = {
-            success: 'bg-green-50 border-green-300 text-green-800',
-            error: 'bg-red-50 border-red-300 text-red-800',
-            info: 'bg-blue-50 border-blue-300 text-blue-800'
-        };
-
-        const notification = document.createElement('div');
-        notification.className = `fixed top-4 right-4 p-4 rounded-lg border ${colors[type]} z-50 max-w-md`;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-
-        setTimeout(() => notification.remove(), 4000);
+    
+    // Copy all vouchers to clipboard
+    function copyAllVouchers() {
+        const resultsDiv = document.getElementById('voucher-results');
+        const codes = Array.from(resultsDiv.querySelectorAll('p.font-bold'))
+            .map(p => p.textContent)
+            .filter(text => !text.startsWith('---'));
+        
+        if (codes.length === 0) {
+            alert('No vouchers to copy');
+            return;
+        }
+        
+        navigator.clipboard.writeText(codes.join('\n')).then(() => {
+            alert(`Copied ${codes.length} voucher codes to clipboard!`);
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            alert('Failed to copy to clipboard');
+        });
+    }
+    
+    // Clear voucher results
+    function clearVoucherResults() {
+        const resultsDiv = document.getElementById('voucher-results');
+        resultsDiv.innerHTML = '<p class="text-gray-500 text-center py-8">No vouchers generated yet. Select a profile and click Generate.</p>';
     }
 </script>
 {% endblock %}

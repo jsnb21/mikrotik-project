@@ -16,8 +16,7 @@ class Config:
     MIKROTIK_HOST = os.environ.get('MIKROTIK_HOST') or '192.168.88.1'
     MIKROTIK_PORT = int(os.environ.get('MIKROTIK_PORT') or 8728)
     # Support both USERNAME and legacy USER
-    MIKROTIK_USERNAME = os.environ.get('MIKROTIK_USERNAME') or os.environ.get('MIKROTIK_USER') or 'admin'
-    MIKROTIK_USER = os.environ.get('MIKROTIK_USER') or MIKROTIK_USERNAME
+    MIKROTIK_USERNAME = os.environ.get('MIKROTIK_USERNAME') or 'admin'
     MIKROTIK_PASSWORD = os.environ.get('MIKROTIK_PASSWORD') or ''
     MIKROTIK_USE_SSL = os.environ.get('MIKROTIK_USE_SSL', 'False').lower() == 'true'
     MIKROTIK_WAN_INTERFACE = os.environ.get('MIKROTIK_WAN_INTERFACE') or 'ether1'

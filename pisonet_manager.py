@@ -874,7 +874,7 @@ class SettingsView(ctk.CTkFrame):
         
         self.create_entry(form_frame, "Router IP (Host):", "MIKROTIK_HOST", 0)
         self.create_entry(form_frame, "API Port:", "MIKROTIK_PORT", 1)
-        self.create_entry(form_frame, "Username:", "MIKROTIK_USER", 2)
+        self.create_entry(form_frame, "Username:", "MIKROTIK_USERNAME", 2)
         self.create_entry(form_frame, "Password:", "MIKROTIK_PASSWORD", 3, show="*")
         self.create_entry(form_frame, "WAN Interface:", "MIKROTIK_WAN_INTERFACE", 4)
         
@@ -943,17 +943,13 @@ class SettingsView(ctk.CTkFrame):
         defaults = {
             "MIKROTIK_HOST": "192.168.88.1",
             "MIKROTIK_PORT": "8728",
-            "MIKROTIK_USER": "admin",
+            "MIKROTIK_USERNAME": "admin",
             "MIKROTIK_PASSWORD": "",
             "MIKROTIK_WAN_INTERFACE": "ether1"
         }
         
         for key, entry in self.entries.items():
             val = env_vars.get(key, defaults.get(key, ""))
-            # Handle MIKROTIK_USERNAME/USER confusion locally
-            if key == "MIKROTIK_USER" and "MIKROTIK_USER" not in env_vars and "MIKROTIK_USERNAME" in env_vars:
-                val = env_vars["MIKROTIK_USERNAME"]
-                
             entry.delete(0, tk.END)
             entry.insert(0, val)
         
@@ -980,21 +976,12 @@ class SettingsView(ctk.CTkFrame):
                 if key in new_values:
                     new_lines.append(f"{key}={new_values[key]}\n")
                     updated_keys.add(key)
-                elif key == "MIKROTIK_USERNAME" and "MIKROTIK_USER" in new_values:
-                    # Update legacy USERNAME to USER value
-                    new_lines.append(f"MIKROTIK_USERNAME={new_values['MIKROTIK_USER']}\n")
-                    # Also ensure MIKROTIK_USER is added later if strictly needed, 
-                    # OR we can just update USERNAME and assume config.py might be changed to read USERNAME?
-                    # No, let's keep it simple. If USERNAME matches USER logic, treat them as linked.
-                    # But distinct keys:
-                    # Logic: If .env has USERNAME, update it. If it doesn't have USER, add it.
-                    updated_keys.add("MIKROTIK_USERNAME") # Mark as handled so we don't duplicate
                 else:
                     new_lines.append(line)
             else:
                 new_lines.append(line)
         
-        # Append missing keys (like if MIKROTIK_USER was missing but we had USERNAME, we might want to add USER too to match config.py)
+        # Append missing keys
         for key, val in new_values.items():
             if key not in updated_keys:
                 new_lines.append(f"{key}={val}\n")
@@ -1014,7 +1001,7 @@ class SettingsView(ctk.CTkFrame):
         # Note: Ideally store reference to button to disable it, but for simplicity we rely on modal behavior
         
         host = self.entries["MIKROTIK_HOST"].get()
-        user = self.entries["MIKROTIK_USER"].get()
+        user = self.entries["MIKROTIK_USERNAME"].get()
         password = self.entries["MIKROTIK_PASSWORD"].get()
         wan_iface = self.entries["MIKROTIK_WAN_INTERFACE"].get()
         

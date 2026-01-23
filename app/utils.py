@@ -29,8 +29,7 @@ def get_mikrotik_api():
             if has_app_context():
                 cfg = current_app.config
                 host = cfg.get('MIKROTIK_HOST')
-                # Support both new and legacy keys
-                username = cfg.get('MIKROTIK_USERNAME') or cfg.get('MIKROTIK_USER')
+                username = cfg.get('MIKROTIK_USERNAME')
                 password = cfg.get('MIKROTIK_PASSWORD')
                 port = cfg.get('MIKROTIK_PORT')
                 use_ssl = cfg.get('MIKROTIK_USE_SSL')
@@ -40,7 +39,7 @@ def get_mikrotik_api():
 
         # Fallback to environment variables if config missing
         host = host or os.getenv('MIKROTIK_HOST', '192.168.88.1')
-        username = username or os.getenv('MIKROTIK_USERNAME') or os.getenv('MIKROTIK_USER', 'admin')
+        username = username or os.getenv('MIKROTIK_USERNAME', 'admin')
         password = password or os.getenv('MIKROTIK_PASSWORD', '')
         port = int(port or os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = bool(use_ssl) if use_ssl is not None else (os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true')
