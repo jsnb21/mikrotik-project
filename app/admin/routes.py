@@ -190,7 +190,7 @@ def generate_vouchers():
         # Generate vouchers
         voucher_codes = []
         for _ in range(quantity):
-            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
             voucher = Voucher(code=code, duration=duration_seconds)
             db.session.add(voucher)
             voucher_codes.append(code)
