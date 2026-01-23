@@ -74,10 +74,10 @@ def get_mikrotik_api():
                 else:
                     api = RouterOsApiPool(host, username=username, password=password,
                                           port=attempt_port, use_ssl=attempt_ssl)
-                print(f"[DEBUG] ✓ Connected successfully using: {attempt_name}")
+                print(f"[DEBUG] OK Connected successfully using: {attempt_name}")
                 return api
             except Exception as e:
-                print(f"[DEBUG] ✗ Failed {attempt_name}: {str(e)[:200]}")
+                print(f"[DEBUG] X Failed {attempt_name}: {str(e)[:200]}")
                 continue
 
         raise Exception("All connection attempts failed")
