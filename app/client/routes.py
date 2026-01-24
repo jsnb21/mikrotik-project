@@ -5,10 +5,31 @@ from ..models import Voucher
 from ..utils import (
     get_mikrotik_active_hotspot_users,
     mikrotik_allow_mac,
-    get_mac_from_active_session
+    get_mac_from_active_session,
+    get_mac_from_arp
 )
 from datetime import datetime, timezone
 import socket
+import threading
+from flask import make_response
+
+def authorize_mikrotik_background(app, code, mac_address, duration):
+    """Background thread to authorize MAC with MikroTik using its own app context"""
+    with app.app_context():
+        try:
+            app.logger.info("[BG] Starting MikroTik authorization for %s (MAC: %s)", code, mac_address)
+            mikrotik_allow_mac(mac_address, duration)
+            app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
+        except Exception as e:
+            app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
+
+
+@client_bp.route('/ping')
+def ping():
+    """Fast, no-cache ping to detect connectivity after bypass."""
+    resp = make_response(jsonify({'ok': True, 'server_time': datetime.now(timezone.utc).isoformat()}))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 
 @client_bp.route('/')
@@ -38,11 +59,18 @@ def index():
             session.pop('active_code', None)
             session.modified = True  # Ensure session changes are saved
     
-    # If no MAC from hotspot params, try to get from MikroTik active sessions by IP
+    # If no MAC from hotspot params, try to get from MikroTik
     if not mac_address:
+        # First try active sessions (already authenticated users)
         mac_address = get_mac_from_active_session(client_ip)
+        
+        # If not found, try ARP table (includes unauthenticated devices)
+        if not mac_address:
+            mac_address = get_mac_from_arp(client_ip)
+            current_app.logger.info("Index: Got MAC from ARP for IP %s: %s", client_ip, mac_address)
     
     # Check if MAC address has an active voucher
+    detected_code = None
     if mac_address:
         active_voucher = Voucher.query.filter(
             Voucher.user_mac_address == mac_address,
@@ -54,15 +82,25 @@ def index():
             session['hotspot_mac'] = mac_address  # Store MAC in session
             current_app.logger.info("Index: Redirecting to status: code=%s MAC=%s", active_voucher.code, mac_address)
             return redirect(url_for('client.status_page', code=active_voucher.code))
+        
+        # Check for non-activated vouchers for this MAC (recently used)
+        recent_voucher = Voucher.query.filter(
+            Voucher.user_mac_address == mac_address
+        ).order_by(Voucher.activated_at.desc()).first()
+        
+        if recent_voucher:
+            detected_code = recent_voucher.code
+            current_app.logger.info("Index: Auto-detected code %s for MAC %s", detected_code, mac_address)
 
     # If called from MikroTik hotspot, use hotspot template
     if mac_address:
         return render_template('voucher_login.html', 
                              mac_address=mac_address,
                              ip_address=ip_address,
-                             link_orig=link_orig)
+                             link_orig=link_orig,
+                             detected_code=detected_code)
     
-    return render_template('index.html')
+    return render_template('index.html', detected_code=detected_code)
 
 
 @client_bp.route('/design')
@@ -72,6 +110,51 @@ def design_view():
                          mac_address="00:11:22:33:44:55",
                          ip_address="192.168.88.254",
                          link_orig="http://www.google.com")
+
+
+@client_bp.route('/api/activate-quick', methods=['POST'])
+def activate_quick():
+    """Fast activation endpoint - validates and queues MikroTik authorization in background"""
+    code = request.form.get('voucher_code', '').strip().upper()
+    mac_address = session.get('hotspot_mac') or request.form.get('mac_address') or '00:00:00:00:00:00'
+    
+    current_app.logger.info("[QUICK] Activate attempt: code=%s, mac=%s", code, mac_address)
+    
+    # FAST VALIDATION ONLY (no MikroTik calls)
+    voucher = Voucher.query.filter_by(code=code).first()
+    
+    if not voucher:
+        current_app.logger.warning("[QUICK] Voucher not found: %s", code)
+        return jsonify({'success': False, 'error': 'Invalid voucher code'}), 400
+    
+    if voucher.is_activated:
+        current_app.logger.info("[QUICK] Voucher already activated: %s", code)
+        if voucher.user_mac_address == mac_address and voucher.remaining_seconds > 0:
+            return jsonify({'success': True, 'message': 'Already activated'}), 200
+        return jsonify({'success': False, 'error': 'Voucher already used'}), 400
+    
+    try:
+        # Quick database activation (no MikroTik yet)
+        current_app.logger.info("[QUICK] Quick-activating voucher %s for MAC %s", code, mac_address)
+        voucher.activate(mac_address)
+        db.session.commit()
+        
+        # Start MikroTik authorization in background thread with app context
+        flask_app = current_app._get_current_object()
+        thread = threading.Thread(
+            target=authorize_mikrotik_background,
+            args=(flask_app, code, mac_address, voucher.duration),
+            daemon=True
+        )
+        thread.start()
+        
+        session['active_code'] = code
+        return jsonify({'success': True, 'message': 'Activation in progress'}), 200
+        
+    except Exception as e:
+        current_app.logger.exception("[QUICK] Error in quick activation: %s", code)
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @client_bp.route('/activate', methods=['POST'])
@@ -176,6 +259,32 @@ def check_status():
 @client_bp.route('/status')
 def status_page():
     code = request.args.get('code')
+    
+    # If no code provided, try to auto-detect from MAC address
+    if not code:
+        # Try to get MAC from session or MikroTik
+        mac_address = session.get('hotspot_mac') or request.args.get('mac')
+        if not mac_address:
+            # Try to get from MikroTik active sessions by IP
+            client_ip = request.remote_addr
+            mac_address = get_mac_from_active_session(client_ip)
+        
+        if mac_address:
+            # Find active voucher for this MAC
+            voucher = Voucher.query.filter(
+                Voucher.user_mac_address == mac_address,
+                Voucher.activated_at != None
+            ).order_by(Voucher.expires_at.desc()).first()
+            
+            if voucher and voucher.remaining_seconds > 0:
+                current_app.logger.info("Status: Auto-detected voucher %s for MAC %s", voucher.code, mac_address)
+                # Redirect to status page with code for clean URL
+                return redirect(url_for('client.status_page', code=voucher.code))
+        
+        # No code and couldn't detect - show error or redirect to login
+        flash("No active session found. Please enter your voucher code.", "error")
+        return redirect(url_for('client.index'))
+    
     # Disable query caching to ensure fresh data from database
     voucher = Voucher.query.filter_by(code=code).first_or_404()
     db.session.expunge(voucher)  # Remove from session cache

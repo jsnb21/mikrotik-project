@@ -36,6 +36,7 @@
                         class="voucher-input"
                         placeholder="000000" 
                         maxlength="6"
+                        {% if detected_code %}value="{{ detected_code }}"{% endif %}
                         required
                         autofocus
                     >
@@ -55,8 +56,11 @@
                 </button>
 
                 <!-- Loading text -->
-                <div id="loadingSpinner" class="text-center mt-4" style="display: none; color: #16a34a; font-size: 1.125rem; font-weight: 800;">
-                    Processing Voucher...
+                <div id="loadingSpinner" class="text-center mt-4" style="display: none;">
+                    <div class="flex flex-col items-center gap-3">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-[#16a34a]"></div>
+                        <p id="statusMessage" class="text-[#16a34a] font-bold text-lg">Processing Voucher...</p>
+                    </div>
                 </div>
             </form>
 
@@ -82,9 +86,107 @@
 <script src="{{ url_for('static', filename='js/notification.js') }}"></script>
 <script src="{{ url_for('static', filename='js/voucher_login.js') }}"></script>
 <script>
-    document.getElementById('voucherForm').addEventListener('submit', function() {
-        document.getElementById('submitBtn').classList.add('hidden');
-        document.getElementById('loadingSpinner').style.display = 'block';
+    const form = document.getElementById('voucherForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const statusMessage = document.getElementById('statusMessage');
+    
+    let isSubmitting = false;
+    let redirecting = false;
+
+    const redirectToStatus = (code) => {
+        if (redirecting) return;
+        redirecting = true;
+        window.location.href = '/status?code=' + code;
+    };
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault(); // Prevent default form submission
+        
+        if (isSubmitting) {
+            return false;
+        }
+        
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.classList.add('hidden');
+        loadingSpinner.style.display = 'block';
+        
+        // Get form data
+        const voucherCode = document.getElementById('voucher_code').value.trim().toUpperCase();
+        const formData = new FormData(form);
+        
+        // Show initial status
+        statusMessage.textContent = 'Validating voucher...';
+        
+        // Submit via FAST API endpoint (no MikroTik wait in request)
+        fetch('/api/activate-quick', {
+            method: 'POST',
+            body: formData,
+            cache: 'no-store'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Activation queued in background! Start fast polling immediately
+                statusMessage.textContent = 'Authorized! Connecting...';
+                let pollCount = 0;
+                const maxPolls = 10; // ~3 seconds at 300ms
+                const pollInterval = setInterval(function() {
+                    pollCount++;
+                    const cb = Date.now();
+                    
+                    // Poll status with cache-busting and no-store
+                    fetch(`/api/status/${voucherCode}?cb=${cb}`, { cache: 'no-store' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.active && data.remaining_seconds > 0) {
+                                clearInterval(pollInterval);
+                                statusMessage.textContent = 'Connected! Redirecting...';
+                                setTimeout(() => redirectToStatus(voucherCode), 50);
+                            }
+                        })
+                        .catch(err => console.log('Poll status:', err));
+
+                    // Also try a local ping to detect LAN connectivity early
+                    fetch(`/ping?c=${cb}`, { cache: 'no-store' })
+                        .then(r => { if (r.ok) { clearInterval(pollInterval); statusMessage.textContent = 'Connected! Redirecting...'; setTimeout(() => redirectToStatus(voucherCode), 50); }})
+                        .catch(() => {});
+                    
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        statusMessage.textContent = 'Finalizing...';
+                        setTimeout(() => redirectToStatus(voucherCode), 400);
+                    }
+                }, 300);
+            } else {
+                // Handle errors
+                const errorMsg = data.error || 'Activation failed. Please try again.';
+                statusMessage.textContent = errorMsg;
+                statusMessage.style.color = '#dc2626';
+                
+                setTimeout(() => {
+                    submitBtn.classList.remove('hidden');
+                    submitBtn.disabled = false;
+                    loadingSpinner.style.display = 'none';
+                    isSubmitting = false;
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            console.error('Activation error:', error);
+            statusMessage.textContent = 'Connection error. Please try again.';
+            statusMessage.style.color = '#dc2626';
+            
+            setTimeout(() => {
+                submitBtn.classList.remove('hidden');
+                submitBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                isSubmitting = false;
+            }, 3000);
+        });
+        
+        return false;
     });
 </script>
 {% endblock %}
