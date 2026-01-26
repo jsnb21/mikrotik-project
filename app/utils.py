@@ -13,6 +13,14 @@ except ImportError:
     print("[WARNING] routeros_api not available. MikroTik API will be mocked.")
 
 # ============ CACHING & PERFORMANCE ============
+
+def _debug(msg: str):
+    """Conditional debug print controlled by env var MIKROTIK_DEBUG=true."""
+    try:
+        if os.getenv('MIKROTIK_DEBUG', 'false').lower() == 'true':
+            print(msg)
+    except Exception:
+        pass
 class CachedValue:
     """Simple TTL cache."""
     def __init__(self, ttl_seconds=5):
@@ -66,7 +74,7 @@ def get_pooled_api():
             api.get_resource('/system/identity').get()
             return _api_pool_instance
         except Exception as e:
-            print(f"[DEBUG] Pooled connection failed, reconnecting: {str(e)[:100]}")
+            _debug(f"[DEBUG] Pooled connection failed, reconnecting: {str(e)[:100]}")
             _api_pool_instance = None
     
     # Create new connection
@@ -87,7 +95,7 @@ def get_mikrotik_api():
         password = None
         port = None
         use_ssl = None
-        timeout = 15  # Add timeout (in seconds)
+        socket_timeout = 15  # Default socket timeout (seconds)
 
         try:
             from flask import current_app, has_app_context
@@ -108,7 +116,8 @@ def get_mikrotik_api():
         password = password or os.getenv('MIKROTIK_PASSWORD', '')
         port = int(port or os.getenv('MIKROTIK_PORT', 8728))
         use_ssl = bool(use_ssl) if use_ssl is not None else (os.getenv('MIKROTIK_USE_SSL', 'False').lower() == 'true')
-        timeout = int(os.getenv('MIKROTIK_TIMEOUT', 15))
+        # Support legacy env var name MIKROTIK_TIMEOUT; map to socket timeout
+        socket_timeout = int(os.getenv('MIKROTIK_TIMEOUT', os.getenv('ROUTEROS_SOCKET_TIMEOUT', 15)))
 
         # Strip accidental whitespace from credentials
         username = (username or '').strip()
@@ -116,7 +125,7 @@ def get_mikrotik_api():
 
         # Show password hint for debugging (first char + *** + last char)
         pwd_hint = f"{password[0]}***{password[-1]}" if len(password) > 2 else "***"
-        print(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, timeout={timeout}s, password={pwd_hint} (length={len(password)})")
+        _debug(f"[DEBUG] MikroTik credentials: host={host}, user={username}, port={port}, ssl={use_ssl}, socket_timeout={socket_timeout}s, password={pwd_hint} (length={len(password)})")
 
         # Connection strategies
         connection_attempts = []
@@ -133,17 +142,26 @@ def get_mikrotik_api():
 
         for attempt_name, attempt_port, attempt_ssl, plaintext in connection_attempts:
             try:
-                print(f"[DEBUG] Trying connection method: {attempt_name}")
+                _debug(f"[DEBUG] Trying connection method: {attempt_name}")
+                # Some versions of routeros_api do not accept 'timeout'; use 'socket_timeout'
+                kwargs_base = {
+                    "username": username,
+                    "password": password,
+                    "port": attempt_port,
+                    "use_ssl": attempt_ssl,
+                }
                 if plaintext:
-                    api = RouterOsApiPool(host, username=username, password=password,
-                                          port=attempt_port, use_ssl=attempt_ssl, plaintext_login=True, timeout=timeout)
-                else:
-                    api = RouterOsApiPool(host, username=username, password=password,
-                                          port=attempt_port, use_ssl=attempt_ssl, timeout=timeout)
-                print(f"[DEBUG] OK Connected successfully using: {attempt_name}")
+                    kwargs_base["plaintext_login"] = True
+                # Prefer socket_timeout for broader compatibility
+                try:
+                    api = RouterOsApiPool(host, socket_timeout=socket_timeout, **kwargs_base)
+                except TypeError:
+                    # Fallback: try without socket_timeout if unsupported
+                    api = RouterOsApiPool(host, **kwargs_base)
+                _debug(f"[DEBUG] OK Connected successfully using: {attempt_name}")
                 return api
             except Exception as e:
-                print(f"[DEBUG] X Failed {attempt_name}: {str(e)[:200]}")
+                _debug(f"[DEBUG] X Failed {attempt_name}: {str(e)[:200]}")
                 continue
 
         raise Exception("All connection attempts failed")
@@ -171,7 +189,7 @@ def get_mikrotik_system_stats(api_pool=None):
     # Check cache first
     cached = _cache_system_stats.get()
     if cached is not None:
-        print("[DEBUG] System stats cache hit (5s TTL)")
+        _debug("[DEBUG] System stats cache hit (5s TTL)")
         return cached
 
     # Use provided connection or create new one
@@ -365,7 +383,7 @@ def get_mikrotik_active_hotspot_users(api_pool=None):
     # Check cache first
     cached = _cache_active_users.get()
     if cached is not None:
-        print("[DEBUG] Active users cache hit (5s TTL)")
+        _debug("[DEBUG] Active users cache hit (5s TTL)")
         return cached
 
     # Use provided connection or create new one
@@ -427,7 +445,7 @@ def get_mikrotik_health(api_pool=None):
     # Check cache first
     cached = _cache_health.get()
     if cached is not None:
-        print("[DEBUG] Health cache hit (10s TTL)")
+        _debug("[DEBUG] Health cache hit (10s TTL)")
         return cached
 
     connection_provided = api_pool is not None
