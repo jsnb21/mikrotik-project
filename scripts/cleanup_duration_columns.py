@@ -13,7 +13,7 @@ def cleanup_duration_columns():
     db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'pisonet.db')
     
     if not os.path.exists(db_path):
-        print(f"❌ Database not found at: {db_path}")
+        print(f"Database not found at: {db_path}")
         return False
     
     try:
@@ -28,7 +28,7 @@ def cleanup_duration_columns():
         print(f"Current columns: {col_names}")
         
         if 'duration_minutes' not in columns:
-            print("ℹ️  duration_minutes column does not exist, nothing to remove")
+            print("duration_minutes column does not exist, nothing to remove")
             return True
         
         # Rename old table
@@ -61,22 +61,22 @@ def cleanup_duration_columns():
         cursor.execute("DROP TABLE vouchers_old")
         
         conn.commit()
-        print("✅ Removed duration_minutes column")
+        print("Removed duration_minutes column")
         
         # Verify final schema
         cursor.execute("PRAGMA table_info(vouchers)")
         final_columns = {col[1]: col for col in cursor.fetchall()}
-        print(f"✅ Final columns: {list(final_columns.keys())}")
+        print(f"Final columns: {list(final_columns.keys())}")
         
         cursor.execute("SELECT COUNT(*) FROM vouchers")
         total = cursor.fetchone()[0]
-        print(f"✅ Total vouchers in database: {total}")
+        print(f"Total vouchers in database: {total}")
         
         conn.close()
         return True
         
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

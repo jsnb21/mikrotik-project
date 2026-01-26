@@ -12,7 +12,7 @@ def migrate():
     db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'pisonet.db')
     
     if not os.path.exists(db_path):
-        print("❌ Database not found at:", db_path)
+        print("Database not found at:", db_path)
         return False
     
     try:
@@ -24,7 +24,7 @@ def migrate():
         columns = [col[1] for col in cursor.fetchall()]
         
         if 'is_developer' in columns:
-            print("✅ Column 'is_developer' already exists")
+            print("Column 'is_developer' already exists")
             conn.close()
             return True
         
@@ -32,12 +32,12 @@ def migrate():
         cursor.execute("ALTER TABLE vouchers ADD COLUMN is_developer BOOLEAN DEFAULT 0")
         conn.commit()
         
-        print("✅ Added 'is_developer' column to vouchers table")
+        print("Added 'is_developer' column to vouchers table")
         conn.close()
         return True
         
     except Exception as e:
-        print(f"❌ Migration error: {str(e)}")
+        print(f"Migration error: {str(e)}")
         return False
 
 if __name__ == '__main__':

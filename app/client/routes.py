@@ -361,13 +361,13 @@ def test_connection():
         
         # Log the connection attempt in terminal
         print("=" * 60)
-        print("🔔 TEST CONNECTION RECEIVED!")
+        print("TEST CONNECTION RECEIVED!")
         print("=" * 60)
-        print(f"📱 Client IP: {client_ip}")
-        print(f"🌐 User Agent: {user_agent}")
-        print(f"🏠 Host Header: {host}")
-        print(f"📦 Data received: {data}")
-        print(f"🔧 Method: {request.method}")
+        print(f"Client IP: {client_ip}")
+        print(f"User Agent: {user_agent}")
+        print(f"Host Header: {host}")
+        print(f"Data received: {data}")
+        print(f"Method: {request.method}")
         print("=" * 60)
         
         # Send success response back to phone
@@ -383,7 +383,7 @@ def test_connection():
         
         return jsonify(response_data), 200
     except Exception as e:
-        print(f"❌ ERROR in test endpoint: {str(e)}")
+        print(f"ERROR in test endpoint: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 

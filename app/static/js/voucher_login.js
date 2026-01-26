@@ -68,13 +68,13 @@ function testConnection() {
     })
     .then(data => {
         // Success!
-        resultDiv.innerHTML = '<div class="result-success">✓ ' + data.message + '<br><small>Your IP: ' + data.client_ip + '</small></div>';
+        resultDiv.innerHTML = '<div class="result-success">Success: ' + data.message + '<br><small>Your IP: ' + data.client_ip + '</small></div>';
         debugDiv.innerHTML += '<br><strong style="color: green;">SUCCESS!</strong>';
         notifySuccess('Connected', 'Server is responding correctly!');
     })
     .catch(error => {
         // Error
-        resultDiv.innerHTML = '<div class="result-error">✗ ' + error.message + '</div>';
+        resultDiv.innerHTML = '<div class="result-error">Error: ' + error.message + '</div>';
         debugDiv.innerHTML += '<br><strong style="color: red;">ERROR: ' + error.message + '</strong>';
         notifyError('Connection Failed', error.message);
     })

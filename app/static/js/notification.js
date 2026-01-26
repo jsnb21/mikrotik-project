@@ -16,10 +16,10 @@ function showNotification(title, message, type = 'info', duration = 5000) {
   const container = createNotificationContainer();
   
   const icons = {
-    info: 'ℹ️',
-    success: '✓',
-    warning: '⚠',
-    error: '✕'
+    info: 'i',
+    success: 'OK',
+    warning: '!',
+    error: 'X'
   };
   
   const notification = document.createElement('div');

@@ -22,10 +22,10 @@ def create_dev_code():
         
         # Check if is_developer exists
         if 'is_developer' not in columns:
-            print("\n🔄 Adding is_developer column...")
+            print("\nAdding is_developer column...")
             cursor.execute("ALTER TABLE vouchers ADD COLUMN is_developer BOOLEAN DEFAULT 0")
             conn.commit()
-            print("✅ Added is_developer column")
+            print("Added is_developer column")
         
         # Determine which duration column to use
         duration_col = 'duration' if 'duration' in columns else 'duration_minutes'
@@ -42,7 +42,7 @@ def create_dev_code():
         cursor.execute(sql, ('DEVTEST', 999999999, 999999999, 0, 0, now))
         conn.commit()
         
-        print(f"\n✅ Developer code created!")
+        print(f"\nDeveloper code created!")
         print(f"   Code: DEVTEST")
         print(f"   Duration: Unlimited")
         print(f"   Type: Developer (never expires)")
@@ -51,7 +51,7 @@ def create_dev_code():
         return True
         
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

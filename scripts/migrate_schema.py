@@ -13,7 +13,7 @@ def migrate():
     db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'pisonet.db')
     
     if not os.path.exists(db_path):
-        print("❌ Database not found at:", db_path)
+        print("Database not found at:", db_path)
         return False
     
     try:
@@ -26,10 +26,10 @@ def migrate():
         
         # Check if we need to rename duration_minutes to duration
         if 'duration_minutes' in columns and 'duration' not in columns:
-            print("🔄 Renaming duration_minutes to duration...")
+            print("Renaming duration_minutes to duration...")
             cursor.execute("ALTER TABLE vouchers RENAME COLUMN duration_minutes TO duration")
             conn.commit()
-            print("✅ Renamed duration_minutes to duration")
+            print("Renamed duration_minutes to duration")
         
         # Refresh column info
         cursor.execute("PRAGMA table_info(vouchers)")
@@ -37,19 +37,19 @@ def migrate():
         
         # Add is_developer column if it doesn't exist
         if 'is_developer' not in columns:
-            print("🔄 Adding is_developer column...")
+            print("Adding is_developer column...")
             cursor.execute("ALTER TABLE vouchers ADD COLUMN is_developer BOOLEAN DEFAULT 0")
             conn.commit()
-            print("✅ Added is_developer column")
+            print("Added is_developer column")
         else:
-            print("✅ is_developer column already exists")
+            print("is_developer column already exists")
         
-        print("\n✅ Migration complete!")
+        print("\nMigration complete!")
         conn.close()
         return True
         
     except Exception as e:
-        print(f"❌ Migration error: {str(e)}")
+        print(f"Migration error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

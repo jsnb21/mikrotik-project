@@ -31,7 +31,7 @@ def create_developer_code(code=None):
         # Check if code already exists
         existing = Voucher.query.filter_by(code=code).first()
         if existing:
-            print(f"❌ Code {code} already exists!")
+            print(f"Code {code} already exists!")
             return False
         
         # Create developer voucher with infinite duration
@@ -44,7 +44,7 @@ def create_developer_code(code=None):
         db.session.add(voucher)
         db.session.commit()
         
-        print(f"✅ Developer code created: {code}")
+        print(f"Developer code created: {code}")
         print(f"   Duration: Unlimited (∞)")
         print(f"   Type: Developer/Test Code")
         print(f"\n   Use this code to test the system.")

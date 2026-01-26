@@ -60,13 +60,13 @@ class CustomMessageBox(ctk.CTkToplevel):
 
         # Style based on type
         if type == "error":
-            icon_char = "✕"
+            icon_char = "!"
             icon_color = "#ff5f52" # Coral Red
         elif type == "success" or title.lower() == "success":
-            icon_char = "✓"
+            icon_char = "OK"
             icon_color = "#ffd41d" # Vibrant Yellow
         else:
-            icon_char = "ℹ"
+            icon_char = "i"
             icon_color = "#4b7178" # Muted Blue-Grey
 
         # Icon
@@ -259,12 +259,12 @@ class PisonetManager(ctk.CTk):
 
     def create_sidebar_btn(self, text, command):
         icon_map = {
-            "Dashboard": "🏠",
-            "Generate": "🎫",
-            "Hotspot": "📡",
-            "Settings": "⚙"
+            "Dashboard": "[D]",
+            "Generate": "[G]",
+            "Hotspot": "[H]",
+            "Settings": "[S]"
         }
-        icon = icon_map.get(text, "●")
+        icon = icon_map.get(text, "-")
         
         # Container Frame (Simulates Button)
         btn_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent", height=40, corner_radius=6)
@@ -465,7 +465,7 @@ class PisonetManager(ctk.CTk):
             
             result = messagebox.askyesno(
                 "Confirm Close",
-                "⚠️ WARNING: The server is currently running.\n\n"
+                "WARNING: The server is currently running.\n\n"
                 "Closing the app will REVOKE ACCESS to all active users!\n\n"
                 "Do you want to continue?"
             )
@@ -722,7 +722,7 @@ class HotspotView(ctk.CTkFrame):
         
         result = messagebox.askyesno(
             "Confirm Revoke All",
-            "⚠️ This will REVOKE ACCESS for all active users!\n\n"
+            "WARNING: This will REVOKE ACCESS for all active users!\n\n"
             "Do you want to continue?"
         )
         root.destroy()
