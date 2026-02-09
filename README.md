@@ -27,7 +27,7 @@ Ensure you have the following components before beginning:
 
 * **Python:** 3.8 or newer (3.11+ recommended).
 * **Winbox:** [Download MikroTik Winbox](https://mikrotik.com/winbox).
-* **Config Files:** [Insert Link to Config Package Here].
+* **Config Files:** "repo"\backups\Mikrotik Config\Mikrotik Setup.backup.
 
 ### 2. Environment Setup
 
