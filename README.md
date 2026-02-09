@@ -1,157 +1,129 @@
-MIKROTIK PISONET SETUP GUIDE
-----------------------------
-*By Baronia and Verceles*
+# MIKROTIK PISONET SETUP GUIDE
 
-*Last Update:* 26/01/2026
+**By Baronia and Verceles** *Last Update: 09/02/2026*
 
-Overview
---------
-This guide covers the basic hardware and first steps required to set up a PisoNet hotspot using a MikroTik router and a server PC that hosts the voucher login and admin dashboard.
+---
 
-Hardware checklist
-------------------
-- Server PC — Runs the admin dashboard and voucher service.
-- MikroTik router — A hAP lite or any newer MikroTik model is suitable.
-- Ethernet cables — Use tested, working cables. At minimum you typically need two cables (server to router and WAN to router); add more if you connect extra devices.
-- (Optional) Secondary router or access point — Use this for extended coverage if needed.
+## Overview
 
-Downloads
----------
-- Configuration files: add your configuration package link here.
-- MikroTik Winbox: https://mikrotik.com/winbox
+This project provides a comprehensive system for setting up a **PisoNet-like hotspot**. It utilizes a MikroTik router for network management and a Python-based server to host the voucher login system and administrative dashboard.
 
-Quick start
------------
-1. Prepare the server PC and install the required software (see project `requirements.txt`).
-2. Configure the MikroTik router using Winbox or the web interface. Apply the hotspot and walled-garden settings as required.
-3. Place the project's `.env` file next to the application and update the MikroTik credentials and host settings.
-4. Run the CLI manager:
+---
+
+## Hardware Checklist
+
+Ensure you have the following components before beginning:
+
+* **Server PC:** Runs the admin dashboard and voucher service.
+* **MikroTik Router:** hAP lite or any newer model with RouterOS.
+* **Ethernet Cables:** Minimum of two (Server-to-Router and WAN-to-Router).
+* **Access Point (Optional):** Secondary router for extended Wi-Fi coverage.
+
+---
+
+## Quick Start
+
+### 1. Software Prerequisites
+
+* **Python:** 3.8 or newer (3.11+ recommended).
+* **Winbox:** [Download MikroTik Winbox](https://mikrotik.com/winbox).
+* **Config Files:** [Insert Link to Config Package Here].
+
+### 2. Environment Setup
+
+Clone the repository and set up your virtual environment:
+
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate      # Linux / macOS
+.venv\Scripts\activate        # Windows (PowerShell)
+
+# Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+```
+
+### 3. Router Configuration
+
+1. Connect to your MikroTik via **Winbox**.
+2. Apply the provided configuration file.
+3. Ensure **Hotspot** and **Walled-Garden** settings are active to allow communication with the Server PC.
+
+---
+
+## Configuration
+
+The system uses a `.env` file for runtime settings. Create this file in the project root:
+
+| Variable | Description | Default/Example |
+| --- | --- | --- |
+| `MIKROTIK_HOST` | Router IP address | `192.168.88.1` |
+| `MIKROTIK_PORT` | RouterOS API port | `8728` |
+| `MIKROTIK_USERNAME` | API username | `admin` |
+| `MIKROTIK_PASSWORD` | API password | `secret` |
+| `SERVER_IP` | IP of the Server PC | `192.168.1.100` |
+| `AUTO_START_SERVER` | Start Flask on launch | `false` |
+
+*Note: Change the default username and password for security purposes*
+
+---
+
+## Usage
+
+### Running the Manager
+
+Launch the CLI to manage vouchers and router settings:
 
 ```bash
 python pisonet_manager_cli.py
-```
-
-Support
--------
-For configuration examples and troubleshooting, refer to the project documentation or open an issue in the repository.
-
-Replace any placeholders above (for example configuration links) with your actual resources before deploying.
-
-Requirements
-------------
-- Python 3.8 or newer (3.11+ recommended).
-- A virtual environment (recommended) and the packages listed in `requirements.txt`.
-
-Create a virtual environment and install dependencies:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Linux / macOS
-.venv\Scripts\activate     # Windows (PowerShell)
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-If you do not have `requirements.txt` up-to-date, generate it from your environment with:
-
-```bash
-pip freeze > requirements.txt
-```
-
-Additional documentation (placeholders)
--------------------------------------
-Below are sections you can fill with project-specific instructions and examples.
-
-Configuration
--------------
-This project stores runtime settings in a `.env` file at the project root. Important variables:
-
-- `MIKROTIK_HOST` — router IP or hostname (default: `192.168.88.1`).
-- `MIKROTIK_PORT` — RouterOS API port (default: `8728`).
-- `MIKROTIK_USERNAME` — API username (usually `admin`).
-- `MIKROTIK_PASSWORD` — API password.
-- `MIKROTIK_WAN_INTERFACE` — WAN interface name (e.g. `ether1`).
-- `SERVER_IP` — IP address of the server hosting the web admin and voucher redirect.
-- `AUTO_START_SERVER` — `true`/`false` to auto-start the Flask server on launch.
-
-Example `.env` snippet:
 
 ```
-MIKROTIK_HOST=192.168.88.1
-MIKROTIK_PORT=8728
-MIKROTIK_USERNAME=admin
-MIKROTIK_PASSWORD=secret
-MIKROTIK_WAN_INTERFACE=ether1
-SERVER_IP=192.168.1.100
-AUTO_START_SERVER=false
-```
 
-After editing `.env`, restart the CLI or use the Settings menu to re-apply values.
+### RouterOS Integration Features
 
-RouterOS Integration
----------------------
-This project interacts with RouterOS using the RouterOS API to:
+The CLI communicates with your router to automate:
 
-- Add/modify walled-garden (hotspot) entries that allow access to the admin and login pages.
-- Manage IP bindings/address entries if you maintain static entries for the server.
-- Add or update DNS static records that point human-friendly names to the `SERVER_IP`.
+* **Walled Garden:** Automatically whitelist the admin/login pages.
+* **DNS Management:** Create static records for user-friendly login URLs.
+* **User Management:** Revoke or modify hotspot active users.
 
-Notes and recommendations:
-- Always keep a backup of the router configuration before running automated changes.  
-- The CLI offers a `Test Router Connection` action to verify API connectivity before applying changes.  
-- API operations are performed in a best-effort manner; inspect logs or test connectivity manually if changes fail.
-
-Troubleshooting
----------------
-Common issues and steps to resolve them:
-
-- Router connection failures:
-	- Verify IP/port/credentials in `.env`.  
-	- Ensure the router API service is enabled and accessible from the server (firewall/NAT).  
-	- Use Winbox to test connectivity and check RouterOS logs.
-
-- Server not serving pages:
-	- Check that the Flask server is running in the CLI (`Server Management -> View Server Status`).  
-	- Confirm that `SERVER_IP` and firewall rules allow inbound connections to port 5000 if needed.
-
-
-If in doubt, collect the output of `python pisonet_manager_cli.py` and open an issue with the output and steps to reproduce.
-
-FAQ
 ---
-Q: Where are vouchers stored?
-A: Vouchers are stored in the SQLite database located at `instance/pisonet.db`.
 
-Q: How do I revoke a user's access?
-A: Use the `Hotspot Management` menu in the CLI and choose `Revoke User Access` or `Revoke All Users`.
+## Troubleshooting & FAQ
 
-Q: Can I run the web admin on a different port?
-A: The Flask app uses port 5000 by default. To change it, modify the server startup logic or run behind a reverse proxy that listens on a different port.
+### Common Issues
 
-Packaging and Deployment
-------------------------
-Suggested approaches for packaging:
+* **Connection Failed:** Check if the API service is enabled in MikroTik (`IP > Services`). Ensure port `8728` isn't blocked by a firewall.
+* **Pages Not Loading:** Verify the `SERVER_IP` in `.env` matches the PC's actual local IP and that port `5000` is open.
 
-- Windows: Use `pyinstaller` to create a single executable and optionally create an installer with Inno Setup.
-	- Example: `pyinstaller --onefile pisonet_manager_cli.py`  
-- Linux: Use `pyinstaller` or create a systemd service that launches the CLI on boot.
+### FAQ
 
-Remember to include the `instance` folder (database) and the `.env` file in your packaged artifact or document how to create them after installation.
+> **Q: Where are vouchers stored?** > A: They are kept in a local SQLite database at `instance/pisonet.db`.
+> **Q: Can I change the Web Admin port?** > A: Yes, though it defaults to `5000`. You can modify the server startup script or use a reverse proxy.
 
-Contributing
-------------
-Contributions are welcome. Suggested workflow:
+---
 
-1. Fork the repository and create a feature branch.  
-2. Add tests or manual verification notes for CLI or RouterOS changes.  
-3. Open a pull request with a clear description of the change and why it is needed.
+## Deployment
 
-Please keep commits focused and document any external changes required (router scripts, .env keys).
+To package the application for Windows:
 
-License
--------
-Specify the project license here (for example, `MIT`). If you want me to add a license file, tell me which license to use and I will add a `LICENSE` file.
+```bash
+pip install pyinstaller
+pyinstaller --onefile pisonet_manager_cli.py
 
-Contact / Support
------------------
-If you need help, open an issue in this repository. For commercial support or paid help, add contact details or an email address here.
+```
+
+*Note: Ensure you bundle the `instance` folder and `.env` file with your executable.*
+
+---
+
+## Contributing & License
+
+1. Fork the repo and create a feature branch.
+2. Submit a PR with a clear description of changes.
+
+---
+
+**Support:** If you encounter bugs, please open an issue in the repository.
