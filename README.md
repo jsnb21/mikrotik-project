@@ -6,7 +6,7 @@
 
 ## Overview
 
-This project provides a comprehensive system for setting up a **PisoNet-like hotspot**. It utilizes a MikroTik router for network management and a Python-based server to host the voucher login system and administrative dashboard.
+This project provides an affordable, high-speed internet alternative for isolated areas using MikroTik hardware and a custom Python server. It functions as a prepaid voucher system, allowing users to access the web through budget-friendly micro-transactions and turning a single connection into a competitive, low-cost paid service.
 
 ---
 
