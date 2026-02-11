@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from . import admin_bp
 from .. import db
 from ..models import Admin, Voucher
+from ..utils import restart_mikrotik, stop_mikrotik
 import string
 import secrets
 import os
@@ -188,3 +189,23 @@ def generate_vouchers():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restart-mikrotik', methods=['POST'])
+def api_restart_mikrotik():
+    """API endpoint to restart MikroTik router"""
+    try:
+        result = restart_mikrotik()
+        return jsonify(result), 200 if result['success'] else 500
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@admin_bp.route('/api/stop-mikrotik', methods=['POST'])
+def api_stop_mikrotik():
+    """API endpoint to stop/power off MikroTik router"""
+    try:
+        result = stop_mikrotik()
+        return jsonify(result), 200 if result['success'] else 500
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500

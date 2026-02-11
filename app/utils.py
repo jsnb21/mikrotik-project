@@ -759,3 +759,55 @@ def fetch_traffic_async(interface, callback):
     
     thread = threading.Thread(target=_fetch, daemon=True)
     thread.start()
+
+# ============ SYSTEM CONTROL COMMANDS ============
+
+def restart_mikrotik(api_pool=None):
+    """Restart the MikroTik RouterOS system via API.
+    
+    Returns:
+        dict: {'success': bool, 'message': str}
+    """
+    if not ROUTEROS_AVAILABLE:
+        return {'success': False, 'message': 'MikroTik API not available'}
+    
+    try:
+        api = api_pool.get_api() if api_pool else get_mikrotik_api()
+        if not api:
+            return {'success': False, 'message': 'Cannot connect to MikroTik API'}
+        
+        # Call the reboot command
+        api.get_resource('/system/reboot').call('reboot', {})
+        _debug("[DEBUG] MikroTik reboot command sent successfully")
+        return {'success': True, 'message': 'MikroTik restart command sent. Router will reboot in 10 seconds.'}
+    
+    except Exception as e:
+        error_msg = f"Error restarting MikroTik: {str(e)}"
+        print(f"[MIKROTIK] {error_msg}")
+        _debug(f"[DEBUG] {error_msg}")
+        return {'success': False, 'message': error_msg}
+
+def stop_mikrotik(api_pool=None):
+    """Stop/Power off the MikroTik RouterOS system via API.
+    
+    Returns:
+        dict: {'success': bool, 'message': str}
+    """
+    if not ROUTEROS_AVAILABLE:
+        return {'success': False, 'message': 'MikroTik API not available'}
+    
+    try:
+        api = api_pool.get_api() if api_pool else get_mikrotik_api()
+        if not api:
+            return {'success': False, 'message': 'Cannot connect to MikroTik API'}
+        
+        # Call the shutdown command
+        api.get_resource('/system/shutdown').call('shutdown', {})
+        _debug("[DEBUG] MikroTik shutdown command sent successfully")
+        return {'success': True, 'message': 'MikroTik shutdown command sent. Router will power off in 10 seconds.'}
+    
+    except Exception as e:
+        error_msg = f"Error stopping MikroTik: {str(e)}"
+        print(f"[MIKROTIK] {error_msg}")
+        _debug(f"[DEBUG] {error_msg}")
+        return {'success': False, 'message': error_msg}
