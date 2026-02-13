@@ -173,7 +173,12 @@ def generate_vouchers():
         voucher_codes = []
         for _ in range(quantity):
             code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-            voucher = Voucher(code=code, duration=duration_seconds)
+            voucher = Voucher(
+                code=code, 
+                duration=duration_seconds,
+                rate_limit_up=profile.get('rate_up', '1M'),
+                rate_limit_down=profile.get('rate_down', '2M')
+            )
             db.session.add(voucher)
             voucher_codes.append(code)
         
@@ -209,3 +214,109 @@ def api_stop_mikrotik():
         return jsonify(result), 200 if result['success'] else 500
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@admin_bp.route('/api/user-traffic', methods=['GET'])
+def api_user_traffic():
+    """Get traffic statistics for all active users"""
+    from ..utils import get_mikrotik_active_users_with_traffic, format_bytes
+    
+    try:
+        users = get_mikrotik_active_users_with_traffic()
+        
+        # Format the data for display
+        formatted_users = []
+        for user in users:
+            formatted_users.append({
+                'user': user.get('user', 'Unknown'),
+                'mac': user.get('mac', ''),
+                'uptime': user.get('uptime', '0s'),
+                'bytes_in': user.get('bytes_in', 0),
+                'bytes_out': user.get('bytes_out', 0),
+                'bytes_in_formatted': format_bytes(user.get('bytes_in', 0)),
+                'bytes_out_formatted': format_bytes(user.get('bytes_out', 0)),
+                'queue_bytes_in': user.get('queue_bytes_in', 0),
+                'queue_bytes_out': user.get('queue_bytes_out', 0),
+                'queue_bytes_in_formatted': format_bytes(user.get('queue_bytes_in', 0)),
+                'queue_bytes_out_formatted': format_bytes(user.get('queue_bytes_out', 0)),
+                'rate_in': user.get('rate_in', '0'),
+                'rate_out': user.get('rate_out', '0'),
+                'max_limit': user.get('max_limit', 'Unlimited')
+            })
+        
+        return jsonify({'success': True, 'users': formatted_users})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/api/set-bandwidth', methods=['POST'])
+def api_set_bandwidth():
+    """Set bandwidth limit for a user"""
+    from ..utils import mikrotik_add_queue
+    
+    try:
+        data = request.get_json()
+        mac_address = data.get('mac')
+        upload_speed = data.get('upload', '1M')
+        download_speed = data.get('download', '2M')
+        
+        if not mac_address:
+            return jsonify({'success': False, 'error': 'MAC address is required'}), 400
+        
+        success = mikrotik_add_queue(mac_address, upload_speed, download_speed)
+        
+        if success:
+            return jsonify({'success': True, 'message': f'Bandwidth limit set to {upload_speed}/{download_speed}'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to set bandwidth limit'}), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/api/remove-bandwidth', methods=['POST'])
+def api_remove_bandwidth():
+    """Remove bandwidth limit for a user"""
+    from ..utils import mikrotik_remove_queue
+    
+    try:
+        data = request.get_json()
+        mac_address = data.get('mac')
+        
+        if not mac_address:
+            return jsonify({'success': False, 'error': 'MAC address is required'}), 400
+        
+        success = mikrotik_remove_queue(mac_address)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Bandwidth limit removed'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to remove bandwidth limit'}), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/bandwidth')
+def bandwidth_config():
+    """Bandwidth configuration page"""
+    from ..utils import get_mikrotik_active_users_with_traffic, format_bytes
+    import json
+    
+    # Get active users with traffic
+    users = get_mikrotik_active_users_with_traffic()
+    
+    # Load profiles for speed presets
+    profiles_file = 'profiles.json'
+    profiles = []
+    if os.path.exists(profiles_file):
+        try:
+            with open(profiles_file, 'r') as f:
+                profiles = json.load(f)
+        except Exception as e:
+            print(f"Error loading profiles: {e}")
+    
+    return render_template('bandwidth.html', 
+                         users=users, 
+                         profiles=profiles,
+                         format_bytes=format_bytes)

@@ -6,22 +6,28 @@ from ..utils import (
     get_mikrotik_active_hotspot_users,
     mikrotik_allow_mac,
     get_mac_from_active_session,
-    get_mac_from_arp
+    get_mac_from_arp,
+    mikrotik_add_queue
 )
 from datetime import datetime, timezone
 import socket
 import threading
 from flask import make_response
 
-def authorize_mikrotik_background(app, code, mac_address, duration):
-    """Background thread to authorize MAC with MikroTik using its own app context"""
+def authorize_mikrotik_background(app, code, mac_address, duration, rate_up='1M', rate_down='2M'):
+    """Background thread to authorize MAC with MikroTik and apply bandwidth limits using its own app context"""
     with app.app_context():
         try:
             app.logger.info("[BG] Starting MikroTik authorization for %s (MAC: %s)", code, mac_address)
             mikrotik_allow_mac(mac_address, duration)
             app.logger.info("[BG] MikroTik authorization succeeded for %s", code)
+            
+            # Apply bandwidth limit
+            app.logger.info("[BG] Applying bandwidth limit for %s: %s/%s", mac_address, rate_up, rate_down)
+            mikrotik_add_queue(mac_address, rate_up, rate_down)
+            app.logger.info("[BG] Bandwidth limit applied for %s", code)
         except Exception as e:
-            app.logger.exception("[BG] MikroTik authorization failed for %s: %s", code, str(e))
+            app.logger.exception("[BG] MikroTik authorization/bandwidth failed for %s: %s", code, str(e))
 
 
 @client_bp.route('/ping')
@@ -139,11 +145,15 @@ def activate_quick():
         voucher.activate(mac_address)
         db.session.commit()
         
+        # Get bandwidth limits from voucher
+        rate_up = voucher.rate_limit_up or '1M'
+        rate_down = voucher.rate_limit_down or '2M'
+        
         # Start MikroTik authorization in background thread with app context
         flask_app = current_app._get_current_object()
         thread = threading.Thread(
             target=authorize_mikrotik_background,
-            args=(flask_app, code, mac_address, voucher.duration),
+            args=(flask_app, code, mac_address, voucher.duration, rate_up, rate_down),
             daemon=True
         )
         thread.start()
@@ -207,8 +217,14 @@ def activate():
         current_app.logger.info("Authorizing MAC %s on MikroTik for voucher %s", mac_address, code)
         try:
             mikrotik_allow_mac(mac_address, voucher.duration)  # Use voucher.duration for initial authorization
+            
+            # Apply bandwidth limit
+            rate_up = voucher.rate_limit_up or '1M'
+            rate_down = voucher.rate_limit_down or '2M'
+            current_app.logger.info("Applying bandwidth limit for %s: %s/%s", mac_address, rate_up, rate_down)
+            mikrotik_add_queue(mac_address, rate_up, rate_down)
         except Exception as e:
-            current_app.logger.exception("mikrotik_allow_mac failed for %s", mac_address)
+            current_app.logger.exception("mikrotik_allow_mac or bandwidth setup failed for %s", mac_address)
             flash("Failed to authorize with router. Please check MikroTik connection and try again.", "error")
             mac_address = session.get('hotspot_mac') or request.form.get('mac_address')
             return render_template('voucher_login.html', 
@@ -295,12 +311,29 @@ def status_page():
 @client_bp.route('/end-session', methods=['POST'])
 def end_session():
     """End the current session and clear the active code"""
+    from ..utils import mikrotik_revoke_mac, mikrotik_remove_queue
+    
     code = request.form.get('code')
     voucher = Voucher.query.filter_by(code=code).first()
     
     if voucher:
+        # Remove bandwidth queue if MAC address exists
+        if voucher.user_mac_address:
+            try:
+                mikrotik_remove_queue(voucher.user_mac_address)
+                current_app.logger.info("Removed bandwidth queue for MAC: %s", voucher.user_mac_address)
+            except Exception as e:
+                current_app.logger.error("Failed to remove bandwidth queue: %s", str(e))
+        
         # Reset activation for developer codes only
         if voucher.is_developer:
+            # Revoke MikroTik access for developer codes
+            if voucher.user_mac_address:
+                try:
+                    mikrotik_revoke_mac(voucher.user_mac_address)
+                except Exception as e:
+                    current_app.logger.error("Failed to revoke MAC: %s", str(e))
+            
             voucher.activated_at = None
             voucher.expires_at = None
             voucher.user_mac_address = None

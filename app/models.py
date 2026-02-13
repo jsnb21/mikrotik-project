@@ -26,6 +26,10 @@ class Voucher(db.Model):
     duration = db.Column(db.Integer, nullable=False) # Duration in seconds (e.g., 3600 for 1 hour)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
+    # Bandwidth limits
+    rate_limit_up = db.Column(db.String(20), nullable=True, default='1M')  # Upload speed limit (e.g., '1M', '512K')
+    rate_limit_down = db.Column(db.String(20), nullable=True, default='2M')  # Download speed limit (e.g., '2M', '5M')
+    
     # Activation details
     activated_at = db.Column(db.DateTime, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=True)

@@ -811,3 +811,212 @@ def stop_mikrotik(api_pool=None):
         print(f"[MIKROTIK] {error_msg}")
         _debug(f"[DEBUG] {error_msg}")
         return {'success': False, 'message': error_msg}
+
+# ============ BANDWIDTH CONTROL & TRAFFIC TRACKING ============
+
+def mikrotik_add_queue(mac_address, upload_speed="1M", download_speed="2M", name_prefix="pisonet"):
+    """
+    Add a Simple Queue to limit bandwidth for a specific MAC address.
+    
+    Args:
+        mac_address: MAC address of the client
+        upload_speed: Upload speed limit (e.g., "1M", "512K")
+        download_speed: Download speed limit (e.g., "2M", "1M")
+        name_prefix: Prefix for queue name
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        print(f"[MIKROTIK] Failed to connect - cannot add queue for MAC {mac_address}")
+        return False
+
+    try:
+        api = api_pool.get_api()
+        simple_queue = api.get_resource('/queue/simple')
+        
+        queue_name = f"{name_prefix}-{mac_address.replace(':', '-')}"
+        
+        # Check if queue already exists
+        existing = simple_queue.get(name=queue_name)
+        if existing:
+            # Update existing queue
+            queue_id = existing[0].get('id') or existing[0].get('.id')
+            simple_queue.set(id=queue_id, **{
+                'max-limit': f"{upload_speed}/{download_speed}",
+                'target': mac_address
+            })
+            print(f"[MIKROTIK] Updated queue for MAC {mac_address}: {upload_speed}/{download_speed}")
+        else:
+            # Create new queue
+            simple_queue.add(**{
+                'name': queue_name,
+                'target': mac_address,
+                'max-limit': f"{upload_speed}/{download_speed}",
+                'comment': 'PisoNet bandwidth control'
+            })
+            print(f"[MIKROTIK] Added queue for MAC {mac_address}: {upload_speed}/{download_speed}")
+        
+        return True
+    except Exception as e:
+        print(f"[MIKROTIK] Error adding queue for MAC {mac_address}: {str(e)}")
+        return False
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+
+def mikrotik_remove_queue(mac_address, name_prefix="pisonet"):
+    """
+    Remove a Simple Queue for a specific MAC address.
+    
+    Args:
+        mac_address: MAC address of the client
+        name_prefix: Prefix for queue name
+    
+    Returns:
+        bool: True if successful or not found, False otherwise
+    """
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        print(f"[MIKROTIK] Failed to connect - cannot remove queue for MAC {mac_address}")
+        return False
+
+    try:
+        api = api_pool.get_api()
+        simple_queue = api.get_resource('/queue/simple')
+        
+        queue_name = f"{name_prefix}-{mac_address.replace(':', '-')}"
+        
+        # Find and remove queue
+        existing = simple_queue.get(name=queue_name)
+        if existing:
+            queue_id = existing[0].get('id') or existing[0].get('.id')
+            simple_queue.remove(id=queue_id)
+            print(f"[MIKROTIK] Removed queue for MAC {mac_address}")
+        else:
+            print(f"[MIKROTIK] Queue not found for MAC {mac_address} (already removed)")
+        
+        return True
+    except Exception as e:
+        print(f"[MIKROTIK] Error removing queue for MAC {mac_address}: {str(e)}")
+        return False
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+
+def mikrotik_get_user_traffic(mac_address=None, name_prefix="pisonet"):
+    """
+    Get traffic statistics for a specific user or all PisoNet users.
+    
+    Args:
+        mac_address: Optional MAC address to get stats for specific user
+        name_prefix: Prefix for queue name
+    
+    Returns:
+        dict or list: Traffic stats for user(s)
+    """
+    api_pool = get_mikrotik_api()
+    if not api_pool:
+        return {} if mac_address else []
+
+    try:
+        api = api_pool.get_api()
+        simple_queue = api.get_resource('/queue/simple')
+        
+        if mac_address:
+            # Get specific user stats
+            queue_name = f"{name_prefix}-{mac_address.replace(':', '-')}"
+            queues = simple_queue.get(name=queue_name)
+            if queues and len(queues) > 0:
+                q = queues[0]
+                return {
+                    'mac': mac_address,
+                    'bytes_in': int(q.get('bytes-in', 0)),
+                    'bytes_out': int(q.get('bytes-out', 0)),
+                    'packets_in': int(q.get('packets-in', 0)),
+                    'packets_out': int(q.get('packets-out', 0)),
+                    'rate_in': q.get('rate-in', '0'),
+                    'rate_out': q.get('rate-out', '0'),
+                    'max_limit': q.get('max-limit', 'N/A')
+                }
+            return {}
+        else:
+            # Get all PisoNet user stats
+            all_queues = simple_queue.get()
+            stats = []
+            for q in all_queues:
+                name = q.get('name', '')
+                if name.startswith(name_prefix):
+                    mac = name.replace(f"{name_prefix}-", "").replace('-', ':')
+                    stats.append({
+                        'mac': mac,
+                        'name': name,
+                        'bytes_in': int(q.get('bytes-in', 0)),
+                        'bytes_out': int(q.get('bytes-out', 0)),
+                        'packets_in': int(q.get('packets-in', 0)),
+                        'packets_out': int(q.get('packets-out', 0)),
+                        'rate_in': q.get('rate-in', '0'),
+                        'rate_out': q.get('rate-out', '0'),
+                        'max_limit': q.get('max-limit', 'N/A')
+                    })
+            return stats
+    except Exception as e:
+        print(f"[MIKROTIK] Error fetching traffic stats: {str(e)}")
+        return {} if mac_address else []
+    finally:
+        try:
+            api_pool.disconnect()
+        except Exception:
+            pass
+
+def get_mikrotik_active_users_with_traffic(api_pool=None):
+    """
+    Get active hotspot users with their traffic statistics from queues.
+    Combines hotspot active users with queue traffic data.
+    
+    Returns:
+        list: Active users with traffic stats
+    """
+    # Get active hotspot users
+    users = get_mikrotik_active_hotspot_users(api_pool)
+    
+    # Get traffic stats from queues
+    traffic_stats = mikrotik_get_user_traffic()
+    traffic_by_mac = {stat['mac']: stat for stat in traffic_stats}
+    
+    # Merge data
+    for user in users:
+        mac = user.get('mac', '')
+        if mac in traffic_by_mac:
+            # Add queue traffic stats
+            user['queue_bytes_in'] = traffic_by_mac[mac]['bytes_in']
+            user['queue_bytes_out'] = traffic_by_mac[mac]['bytes_out']
+            user['rate_in'] = traffic_by_mac[mac]['rate_in']
+            user['rate_out'] = traffic_by_mac[mac]['rate_out']
+            user['max_limit'] = traffic_by_mac[mac]['max_limit']
+        else:
+            # No queue found (user may not have bandwidth limit)
+            user['queue_bytes_in'] = 0
+            user['queue_bytes_out'] = 0
+            user['rate_in'] = '0'
+            user['rate_out'] = '0'
+            user['max_limit'] = 'Unlimited'
+    
+    return users
+
+def format_bytes(bytes_value):
+    """Format bytes into human-readable format."""
+    try:
+        bytes_value = int(bytes_value)
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if bytes_value < 1024.0:
+                return f"{bytes_value:.2f} {unit}"
+            bytes_value /= 1024.0
+        return f"{bytes_value:.2f} PB"
+    except:
+        return "0 B"

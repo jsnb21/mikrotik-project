@@ -452,9 +452,14 @@ class PisonetManagerCLI:
                     while Voucher.query.filter_by(code=code).first():
                         code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
                     
-                    v = Voucher(code=code, duration=total_seconds)
+                    v = Voucher(
+                        code=code, 
+                        duration=total_seconds,
+                        rate_limit_up=profile.get('rate_up', '1M'),
+                        rate_limit_down=profile.get('rate_down', '2M')
+                    )
                     db.session.add(v)
-                    codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
+                    codes.append(f"{code}  ({profile['name']} - {profile['validity']} @ {profile.get('rate_up', '1M')}/{profile.get('rate_down', '2M')})")
                 
                 db.session.commit()
             
@@ -647,6 +652,189 @@ class PisonetManagerCLI:
     def view_user_profiles(self):
         """Display user profiles"""
         self.view_all_profiles()
+
+    # ========================
+    # BANDWIDTH CONTROL FUNCTIONS
+    # ========================
+
+    def show_bandwidth_menu(self):
+        """Show bandwidth control menu"""
+        while True:
+            options = [
+                "View Active Users with Traffic Stats",
+                "Set Bandwidth Limit for User",
+                "Remove Bandwidth Limit",
+                "View All Bandwidth Queues"
+            ]
+            self.print_menu("Bandwidth Control", options, zero_label="Back")
+            
+            choice = self.get_input("Enter choice: ", range(1, len(options) + 1))
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.view_users_with_traffic()
+            elif choice == "2":
+                self.set_bandwidth_limit()
+            elif choice == "3":
+                self.remove_bandwidth_limit()
+            elif choice == "4":
+                self.view_all_queues()
+
+    def view_users_with_traffic(self):
+        """Display active users with traffic statistics"""
+        print("\n" + "-" * 80)
+        print("Active Users - Traffic Statistics")
+        print("-" * 80)
+        
+        try:
+            from app.utils import get_mikrotik_active_users_with_traffic, format_bytes
+            
+            users = get_mikrotik_active_users_with_traffic()
+            
+            if not users:
+                print("No active users.")
+                print("-" * 80 + "\n")
+                return
+            
+            print(f"{'User':<12} {'MAC Address':<18} {'Download':<15} {'Upload':<15} {'Limit':<15}")
+            print("-" * 80)
+            
+            for user in users:
+                download = format_bytes(user.get('queue_bytes_out') or user.get('bytes_out', 0))
+                upload = format_bytes(user.get('queue_bytes_in') or user.get('bytes_in', 0))
+                limit = user.get('max_limit', 'Unlimited')
+                
+                print(f"{user.get('user', 'Unknown'):<12} {user.get('mac', ''):<18} {download:<15} {upload:<15} {limit:<15}")
+            
+            print("-" * 80 + "\n")
+        except Exception as e:
+            print(f"Error fetching user traffic: {e}\n")
+
+    def set_bandwidth_limit(self):
+        """Set bandwidth limit for a specific user"""
+        print("\n" + "-" * 60)
+        print("Set Bandwidth Limit")
+        print("-" * 60)
+        
+        # Show current active users
+        try:
+            from app.utils import get_mikrotik_active_hotspot_users
+            
+            users = get_mikrotik_active_hotspot_users()
+            
+            if not users:
+                print("No active users found.\n")
+                return
+            
+            print("\nActive Users:")
+            for idx, user in enumerate(users, 1):
+                print(f"  {idx}. {user.get('user', 'Unknown')} - {user.get('mac', '')}")
+            
+            print()
+            mac = input("Enter MAC address: ").strip()
+            
+            if not mac:
+                print("Error: MAC address cannot be empty.\n")
+                return
+            
+            # Show speed presets
+            print("\nSpeed Presets:")
+            for idx, profile in enumerate(self.profiles, 1):
+                print(f"  {idx}. {profile['name']}: {profile['rate_up']}/{profile['rate_down']}")
+            print(f"  {len(self.profiles) + 1}. Custom")
+            
+            preset_choice = input("\nSelect preset or custom (number): ").strip()
+            
+            try:
+                preset_idx = int(preset_choice)
+                if 1 <= preset_idx <= len(self.profiles):
+                    profile = self.profiles[preset_idx - 1]
+                    upload = profile['rate_up']
+                    download = profile['rate_down']
+                else:
+                    # Custom input
+                    upload = input("Upload speed (e.g., 1M, 512K): ").strip() or '1M'
+                    download = input("Download speed (e.g., 2M, 5M): ").strip() or '2M'
+            except ValueError:
+                upload = input("Upload speed (e.g., 1M, 512K): ").strip() or '1M'
+                download = input("Download speed (e.g., 2M, 5M): ").strip() or '2M'
+            
+            print(f"\nApplying bandwidth limit: {upload}/{download} for {mac}")
+            confirm = input("Continue? (yes/no): ").strip().lower()
+            
+            if confirm != "yes":
+                print("Cancelled.\n")
+                return
+            
+            from app.utils import mikrotik_add_queue
+            
+            if mikrotik_add_queue(mac, upload, download):
+                print(f"✅ Bandwidth limit applied successfully!\n")
+            else:
+                print(f"❌ Failed to apply bandwidth limit.\n")
+                
+        except Exception as e:
+            print(f"Error setting bandwidth limit: {e}\n")
+
+    def remove_bandwidth_limit(self):
+        """Remove bandwidth limit for a specific user"""
+        print("\n" + "-" * 60)
+        print("Remove Bandwidth Limit")
+        print("-" * 60)
+        
+        mac = input("Enter MAC address: ").strip()
+        
+        if not mac:
+            print("Error: MAC address cannot be empty.\n")
+            return
+        
+        print(f"\nRemoving bandwidth limit for {mac}")
+        confirm = input("Continue? (yes/no): ").strip().lower()
+        
+        if confirm != "yes":
+            print("Cancelled.\n")
+            return
+        
+        try:
+            from app.utils import mikrotik_remove_queue
+            
+            if mikrotik_remove_queue(mac):
+                print(f"✅ Bandwidth limit removed successfully!\n")
+            else:
+                print(f"❌ Failed to remove bandwidth limit.\n")
+        except Exception as e:
+            print(f"Error removing bandwidth limit: {e}\n")
+
+    def view_all_queues(self):
+        """Display all bandwidth queues"""
+        print("\n" + "-" * 80)
+        print("Bandwidth Queues")
+        print("-" * 80)
+        
+        try:
+            from app.utils import mikrotik_get_user_traffic, format_bytes
+            
+            stats = mikrotik_get_user_traffic()
+            
+            if not stats:
+                print("No bandwidth queues configured.")
+                print("-" * 80 + "\n")
+                return
+            
+            print(f"{'MAC Address':<18} {'Download':<15} {'Upload':<15} {'Limit':<15}")
+            print("-" * 80)
+            
+            for stat in stats:
+                download = format_bytes(stat.get('bytes_out', 0))
+                upload = format_bytes(stat.get('bytes_in', 0))
+                limit = stat.get('max_limit', 'N/A')
+                
+                print(f"{stat.get('mac', ''):<18} {download:<15} {upload:<15} {limit:<15}")
+            
+            print("-" * 80 + "\n")
+        except Exception as e:
+            print(f"Error fetching queues: {e}\n")
 
     # ========================
     # SETTINGS FUNCTIONS
@@ -949,6 +1137,7 @@ class PisonetManagerCLI:
                 "Server Management",
                 "Generate Vouchers",
                 "Hotspot Management",
+                "Bandwidth Control",
                 "Settings",
                 "About"
             ]
@@ -967,8 +1156,10 @@ class PisonetManagerCLI:
             elif choice == "3":
                 self.show_hotspot_menu()
             elif choice == "4":
-                self.show_settings_menu()
+                self.show_bandwidth_menu()
             elif choice == "5":
+                self.show_settings_menu()
+            elif choice == "6":
                 self.show_about()
 
     def show_about(self):

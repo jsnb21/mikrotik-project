@@ -43,6 +43,9 @@
                     <button onclick="switchCategory('vouchers')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="vouchers">
                         <span>🎫</span> Generate Vouchers
                     </button>
+                    <a href="{{ url_for('admin.bandwidth_config') }}" class="w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2 border-l-4 border-transparent hover:border-[#ffd41d] transition-all">
+                        <span>📶</span> Bandwidth Control
+                    </a>
                     <button onclick="switchCategory('router')" class="category-btn w-full text-left px-4 py-3 hover:bg-gray-50 font-medium text-gray-700 flex items-center gap-2" data-category="router">
                         <span>🖧</span> Router Info
                     </button>

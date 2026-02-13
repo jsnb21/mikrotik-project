@@ -640,9 +640,14 @@ class GenerateView(ctk.CTkFrame):
                 while Voucher.query.filter_by(code=code).first():
                     code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
                 
-                v = Voucher(code=code, duration=total_seconds)
+                v = Voucher(
+                    code=code, 
+                    duration=total_seconds,
+                    rate_limit_up=profile.get('rate_up', '1M'),
+                    rate_limit_down=profile.get('rate_down', '2M')
+                )
                 db.session.add(v)
-                codes.append(f"{code}  ({profile['name']} - {profile['validity']})")
+                codes.append(f"{code}  ({profile['name']} - {profile['validity']} @ {profile.get('rate_up', '1M')}/{profile.get('rate_down', '2M')})")
             db.session.commit()
 
         self.result_text.configure(state="normal")
